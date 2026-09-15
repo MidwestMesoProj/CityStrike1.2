@@ -3043,69 +3043,143 @@ function spawnJet(x, z, preset = 'fighter'){
 }
 function updateJetFlight(j, dt){
     if(!controls.isLocked || document.hidden || isDead) return;
-    const f=j.userData.flight, baseMax=(JET_PRESETS[j.userData.preset] || JET_PRESETS.fighter).speed;
-    const thrustMax=35+baseMax*.045, bankInput=Number(moveLeft)-Number(moveRight), pitchInput=Number(helicopterAscend)-Number(helicopterDescend);
-    let remaining=Math.min(.05,Math.max(0,dt));
-    // Bounded force steps also limit collision travel to three metres, even under boost.
-    while(remaining>1e-6){
-        const speed=f.velocity.length(), h=Math.min(remaining,1/120,3/Math.max(1,speed)); remaining-=h;
-        f.throttle=THREE.MathUtils.clamp(f.throttle+(Number(moveForward)*.35-Number(moveBackward)*.5)*h,0,1);
-        f.engine=THREE.MathUtils.damp(f.engine,f.throttle,1.6,h);
-        const authority=THREE.MathUtils.clamp(speed/65,.12,1)*(f.stalled?.45:1);
-        f.pitch=THREE.MathUtils.clamp(f.pitch+pitchInput*.42*authority*h,-1.15,1.15);
-        f.bank=f.onGround ? 0 : THREE.MathUtils.damp(f.bank,bankInput*1.1,2.3,h);
-        f.heading+=h*(f.onGround ? bankInput*.6*Math.min(1,speed/15) : 9.81*Math.tan(f.bank)/Math.max(speed,40));
-        if(f.onGround) f.pitch=THREE.MathUtils.clamp(f.pitch,0,.18);
-        j.rotation.set(f.pitch,f.heading,f.bank,'YXZ');
+    const f = j.userData.flight;
+    const P = JET_PRESETS[j.userData.preset] || JET_PRESETS.fighter;
+    const baseMax = P.speed;
+    const thrustMax = 35 + baseMax * 0.045;
+    const wingArea = 15; // Represents wing surface area for aero calculations
+
+    const bankInput = Number(moveLeft) - Number(moveRight);
+    const pitchInput = Number(helicopterAscend) - Number(helicopterDescend);
+    let remaining = Math.min(0.05, Math.max(0, dt));
+
+    while(remaining > 1e-6){
+        const speed = f.velocity.length();
+        const h = Math.min(remaining, 1/120, 3/Math.max(1, speed)); 
+        remaining -= h;
+
+        // 1. Atmosphere & Dynamic Pressure
+        // Air density (rho) decays exponentially with altitude
+        const altitude = Math.max(0, j.position.y);
+        const airDensity = Math.max(0.1, Math.exp(-altitude / 7500)); 
+        
+        // Dynamic pressure (Q = 1/2 * rho * V^2)
+        const q = 0.5 * airDensity * Math.max(speed * speed, 1);
+
+        // 2. Engine Spooling (Turbine Inertia)
+        f.throttle = THREE.MathUtils.clamp(f.throttle + (Number(moveForward)*0.35 - Number(moveBackward)*0.5)*h, 0, 1);
+        // Reduced damping multiplier (from 1.6 to 0.8) for realistic throttle lag
+        f.engine = THREE.MathUtils.damp(f.engine, f.throttle, 0.8, h);
+
+        // 3. Control Authority
+        // Control surface effectiveness scales with dynamic pressure
+        const authority = THREE.MathUtils.clamp(q / 1500, 0.05, 1.2) * (f.stalled ? 0.3 : 1);
+
+        f.pitch = THREE.MathUtils.clamp(f.pitch + pitchInput * 0.5 * authority * h, -1.2, 1.2);
+        f.bank = f.onGround ? 0 : THREE.MathUtils.damp(f.bank, bankInput * 1.2, 2.5, h);
+        
+        // Turn coordination: banking inherently changes heading
+        f.heading += h * (f.onGround ? bankInput * 0.6 * Math.min(1, speed/15) : (9.81 * Math.tan(f.bank)) / Math.max(speed, 40));
+
+        if(f.onGround) f.pitch = THREE.MathUtils.clamp(f.pitch, 0, 0.22); // Liftoff rotation limit
+
+        j.rotation.set(f.pitch, f.heading, f.bank, 'YXZ');
         f.forward.set(0,0,-1).applyQuaternion(j.quaternion);
-        f.up.set(0,1,0).applyQuaternion(j.quaternion); f.right.set(1,0,0).applyQuaternion(j.quaternion);
-        f.flow.copy(f.velocity).divideScalar(Math.max(speed,.001));
-        const aoa=Math.atan2(-f.velocity.dot(f.up),Math.max(.1,f.velocity.dot(f.forward)));
-        const stall=THREE.MathUtils.clamp((Math.abs(aoa)-.26)/.38,0,1);
-        const cl=THREE.MathUtils.clamp(.28+4.6*aoa,-1.15,1.45)*(1-stall*.86);
-        const lift=THREE.MathUtils.clamp(.0046*speed*speed*cl,-49,59);
-        f.stalled=!f.onGround && (speed<55 || Math.abs(aoa)>.30);
+        f.up.set(0,1,0).applyQuaternion(j.quaternion); 
+        f.right.set(1,0,0).applyQuaternion(j.quaternion);
+        f.flow.copy(f.velocity).divideScalar(Math.max(speed, 0.001));
+
+        // 4. Angle of Attack & Realistic Stall Curve
+        const aoa = Math.atan2(-f.velocity.dot(f.up), Math.max(0.1, f.velocity.dot(f.forward)));
+        const criticalAoA = 0.28; // ~16 degrees
+
+        let cl = 0; // Lift Coefficient
+        if (Math.abs(aoa) < criticalAoA) {
+            cl = 4.5 * aoa; // Linear lift region
+            f.stalled = false;
+        } else {
+            // Post-stall lift deterioration 
+            cl = Math.sign(aoa) * (4.5 * criticalAoA * Math.max(0.1, 1.2 - Math.abs(aoa)));
+            f.stalled = !f.onGround && speed > 30;
+        }
+
+        // Lift Force (L = Q * S * Cl)
+        const lift = q * wingArea * cl * 0.0025; 
+
         if(f.stalled){
-            const pathPitch=Math.atan2(f.velocity.y,Math.hypot(f.velocity.x,f.velocity.z));
-            f.pitch+=(pathPitch-f.pitch)*.55*h;
+            // Aircraft nose drops naturally without lift supporting it
+            const pathPitch = Math.atan2(f.velocity.y, Math.hypot(f.velocity.x, f.velocity.z));
+            f.pitch += (pathPitch - f.pitch) * 0.8 * h;
         }
-        f.liftDir.copy(f.up).addScaledVector(f.flow,-f.up.dot(f.flow)).normalize();
-        const thrust=thrustMax*f.engine*(jetBoost?1.8:1);
-        const drag=thrustMax/(baseMax*baseMax)*speed*speed*(1+.16*cl*cl+stall*4);
-        f.velocity.addScaledVector(f.forward,thrust*h).addScaledVector(f.liftDir,lift*h);
-        f.velocity.addScaledVector(f.flow,-Math.min(speed,drag*h)); f.velocity.y-=9.81*h;
-        f.velocity.addScaledVector(f.right,-f.velocity.dot(f.right)*Math.min(1,.9*h));
-        const backwards=f.velocity.dot(f.forward);
-        if(backwards<0) f.velocity.addScaledVector(f.forward,-backwards);
-        f.velocity.clampLength(0,baseMax*1.8);
+
+        f.liftDir.copy(f.up).addScaledVector(f.flow, -f.up.dot(f.flow)).normalize();
+
+        // 5. Drag Profile (Parasitic + Induced)
+        const cd0 = 0.022; // Parasitic form drag
+        const inducedDrag = 0.06 * cl * cl; // Drag generated by creating lift
+        const cd = cd0 + inducedDrag + (f.stalled ? 0.35 : 0); // Massive drag penalty in stall
+        
+        // Drag Force (D = Q * S * Cd)
+        const drag = q * wingArea * cd * 0.002;
+
+        // Altitude thins the air, starving engines of oxygen (less thrust)
+        const thrust = thrustMax * f.engine * airDensity * (typeof jetBoost !== 'undefined' && jetBoost ? 1.8 : 1);
+
+        // Apply Flight Forces
+        f.velocity.addScaledVector(f.forward, thrust * h);
+        f.velocity.addScaledVector(f.liftDir, lift * h);
+        f.velocity.addScaledVector(f.flow, -drag * h); 
+        f.velocity.y -= 9.81 * h; // Gravity
+
+        // Mitigate side-slip (vertical stabilizer acts as a weather vane)
+        f.velocity.addScaledVector(f.right, -f.velocity.dot(f.right) * Math.min(1, 1.5 * h));
+
+        const backwards = f.velocity.dot(f.forward);
+        if(backwards < 0) f.velocity.addScaledVector(f.forward, -backwards);
+        f.velocity.clampLength(0, baseMax * 2.0);
+
+        // Ground Handling
         if(f.onGround){
-            if(speed<60 || f.pitch<.035 || lift<9.81) f.velocity.y=0;
-            f.velocity.multiplyScalar(Math.exp(-(f.engine<.05?.8:.08)*h));
+            if(speed < 70 || f.pitch < 0.05 || lift < 9.81) f.velocity.y = 0;
+            f.velocity.multiplyScalar(Math.exp(-(f.engine < 0.05 ? 0.8 : 0.08) * h));
         }
-        f.oldPos.copy(j.position); j.position.addScaledVector(f.velocity,h);
-        const collision=aircraftBuildingCollision(j.position,3.5);
+
+        f.oldPos.copy(j.position); 
+        j.position.addScaledVector(f.velocity, h);
+
+        // Collision logic (Unchanged structurally)
+        const collision = aircraftBuildingCollision(j.position, 3.5);
         if(collision){
-            j.position.copy(f.oldPos); f.velocity.set(0,0,0); f.throttle=0; f.engine=0;
-            if(crashDamageCooldown<=0){
-                crashDamageCooldown=1; playSound('crash'); takeDamage(15);
-                if(collision.box.userData?.buildingRec) damageBuilding(collision.box.userData.buildingRec,j.position,5);
+            j.position.copy(f.oldPos); f.velocity.set(0,0,0); f.throttle = 0; f.engine = 0;
+            if(typeof crashDamageCooldown !== 'undefined' && crashDamageCooldown <= 0){
+                crashDamageCooldown = 1; playSound('crash'); takeDamage(60);
+                if(collision.box.userData?.buildingRec) damageBuilding(collision.box.userData.buildingRec, j.position, 5);
             }
             break;
         }
-        const ground=terrainHeightAt(j.position.x,j.position.z)+.4;
-        f.onGround=j.position.y<=ground+.015 && f.velocity.y<=0;
-        if(j.position.y<ground){
-            if(f.velocity.y < -10 && crashDamageCooldown<=0){crashDamageCooldown=1;playSound('crash');takeDamage(Math.min(45,-f.velocity.y));}
-            j.position.y=ground; f.velocity.y=0; f.onGround=true;
+
+        const ground = terrainHeightAt(j.position.x, j.position.z) + 0.4;
+        f.onGround = j.position.y <= ground + 0.015 && f.velocity.y <= 0;
+        
+        if(j.position.y < ground){
+            if(f.velocity.y < -10 && typeof crashDamageCooldown !== 'undefined' && crashDamageCooldown <= 0){
+                crashDamageCooldown = 1; playSound('crash'); takeDamage(Math.min(45, -f.velocity.y));
+            }
+            j.position.y = ground; f.velocity.y = 0; f.onGround = true;
         }
-        const lim=CFG.citySize/2+3000;
-        if(Math.abs(j.position.x)>lim){j.position.x=THREE.MathUtils.clamp(j.position.x,-lim,lim);f.velocity.x=0;}
-        if(Math.abs(j.position.z)>lim){j.position.z=THREE.MathUtils.clamp(j.position.z,-lim,lim);f.velocity.z=0;}
-        if(j.position.y>5000){j.position.y=5000;f.velocity.y=Math.min(0,f.velocity.y);}
-        if(currentVehicle!==j) break;
+
+        const lim = CFG.citySize/2 + 3000;
+        if(Math.abs(j.position.x) > lim){ j.position.x = THREE.MathUtils.clamp(j.position.x, -lim, lim); f.velocity.x = 0; }
+        if(Math.abs(j.position.z) > lim){ j.position.z = THREE.MathUtils.clamp(j.position.z, -lim, lim); f.velocity.z = 0; }
+        
+        // Raised ceiling to accommodate the new atmospheric physics
+        if(j.position.y > 15000){ j.position.y = 15000; f.velocity.y = Math.min(0, f.velocity.y); }
+        
+        if(currentVehicle !== j) break;
     }
-    j.userData.speed=f.velocity.length();
-    f.vs=THREE.MathUtils.damp(f.vs||0,f.velocity.y,6,dt);
+    
+    j.userData.speed = f.velocity.length();
+    f.vs = THREE.MathUtils.damp(f.vs || 0, f.velocity.y, 6, dt);
 }
 function updateFlightHUD(j, dt){
     const f=j.userData.flight; f.hudTime-=dt;
