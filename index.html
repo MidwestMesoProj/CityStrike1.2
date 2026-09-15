@@ -252,7 +252,7 @@ body{overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:#1a2
 <p><span class="key">SPACE</span> Jump/Fly · <span class="key">SHIFT</span> Sprint/Descend · <span class="key">X</span> Jet Boost · <span class="key">B</span> Bomb</p>
 <p><span class="key">H</span> Auto-enter helicopter in ring</p>
 <p><span class="key">1-0</span> Weapons · <span class="key">SCROLL</span> Cycle</p>
-<p><span class="key">E</span> Enter/Exit · <span class="key">P</span> Parachute</p>
+<p><span class="key">E</span> Enter/Exit · <span class="key">J</span> First/Third Person · <span class="key">P</span> Parachute</p>
 <p><span class="key">;</span> Missile POV · <span class="key">M</span> Map (zoom/pan/lock) · <span class="key">TAB</span> Shop · <span class="key">O</span> Settings · <span class="key">T</span> Teleport</p>
 <p style="opacity:.5;margin-top:8px;font-size:11px;">The map has zoom and pan. Lock it before zooming to avoid teleporting accidentally.</p>
 </div>
@@ -1273,7 +1273,9 @@ function die(){
     isDead = true;
     controls.unlock();
     wastedScreen.style.display = 'flex';
+    tpHeadSaved = false;
     if(currentVehicle) exitVehicle();
+    if(playerAvatar) playerAvatar.visible = false;
     if(parachuteActive){
         parachuteActive = false;
         if(parachuteMesh){ scene.remove(parachuteMesh); parachuteMesh = null; }
@@ -1291,7 +1293,9 @@ function respawn(){
     nukeCountdown.classList.remove('active'); nukeCountdown.textContent = '';
     bombCooldown = 0;
     if(parachuteMesh){ scene.remove(parachuteMesh); parachuteMesh = null; }
-    if(gunMesh) gunMesh.visible = true;
+    tpHeadSaved = false;
+    if(gunMesh) gunMesh.visible = !thirdPerson;
+    if(playerAvatar) playerAvatar.visible = thirdPerson;
     setScopeLevel(0);
     document.getElementById('crosshair').style.display = 'block';
     updateHUD();
@@ -1419,7 +1423,13 @@ function updateCarEngine(speed){
     }
 }
 
-function getCameraWorldPos(){ camera.getWorldPosition(_cwp); return _cwp; }
+function getCameraWorldPos(){
+    camera.getWorldPosition(_cwp);
+    // In on-foot third person the simulation eye stays at the avatar's head;
+    // only the render camera sits behind it, so shots/tracers leave the player.
+    if(thirdPerson && mode==='walking' && tpHeadSaved && playerAvatar && playerAvatar.visible) _cwp.copy(_tpHead);
+    return _cwp;
+}
 function getCameraWorldQuat(){ camera.getWorldQuaternion(_cwq); return _cwq; }
 
 // ─── COCKPIT ───
@@ -1491,7 +1501,7 @@ function detachCockpit(v){
 function updateCockpitVisibility(){
     if(!currentVehicle) return;
     const c = currentVehicle.userData.cockpit;
-    if(c) c.visible = (scopeLevel === 0);
+    if(c) c.visible = (scopeLevel === 0 && !thirdPerson);
 }
 
 function enterVehicle(v){
@@ -1508,6 +1518,9 @@ function enterVehicle(v){
     camera.rotation.set(0,0,0);
     attachCockpit(v);
     updateCockpitVisibility();
+    tpHeadSaved=false;
+    if(playerAvatar) playerAvatar.visible=false;
+    if(thirdPerson){ camera.position.set(0,2.6,7); if(v.userData.cockpit) v.userData.cockpit.visible=false; }
     if(gunMesh) gunMesh.visible = false;
     document.getElementById('crosshair').style.display = 'block';
     showMessage('Entered ' + v.userData.type.toUpperCase() + (mode === 'jet' ? ': W/S throttle, A/D bank, Space/Shift pitch' : ''));
@@ -1529,9 +1542,105 @@ function exitVehicle(){
     camera.position.y = Math.max(camera.position.y, terrainHeightAt(camera.position.x, camera.position.z) + 2.0);
     camera.rotation.set(0, 0, 0);
     mode = 'walking'; currentVehicle = null; jetBoost = false;
-    if(gunMesh) gunMesh.visible = true;
+    tpHeadSaved=false;
+    if(gunMesh) gunMesh.visible = !thirdPerson;
+    if(playerAvatar) playerAvatar.visible = thirdPerson;
     document.getElementById('crosshair').style.display = 'block';
     updateHUD();
+}
+
+// ─── THIRD-PERSON CAMERA (J) ───
+let thirdPerson = false;
+let playerAvatar = null;
+const _tpHead = new THREE.Vector3();
+const _tpTmp = new THREE.Vector3();
+const _tpFwd = new THREE.Vector3();
+const _tpDesired = new THREE.Vector3();
+const _tpLook = new THREE.Vector3();
+let tpHeadSaved = false;
+function ensurePlayerAvatar(){
+    if(playerAvatar) return playerAvatar;
+    const grp = new THREE.Group();
+    const limbs = buildHumanoid(grp, SHARED.npcBodyCiv, SHARED.npcSkin, SHARED.npcPants);
+    grp.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.raycast=()=>{}; } });
+    grp.visible=false; scene.add(grp);
+    grp.userData = { limbs, walkPhase:0, speed:3 };
+    playerAvatar = grp;
+    return grp;
+}
+function toggleThirdPerson(){
+    if(isDead || missileView) return;
+    thirdPerson = !thirdPerson;
+    tpHeadSaved = false;
+    const cockpit = currentVehicle && currentVehicle.userData.cockpit;
+    if(thirdPerson){
+        ensurePlayerAvatar();
+        if(mode==='walking') playerAvatar.visible = true;
+        if(gunMesh) gunMesh.visible = false;
+        showMessage('THIRD PERSON — press J to return');
+    } else {
+        if(playerAvatar) playerAvatar.visible = false;
+        if(currentVehicle){
+            camera.position.copy(currentVehicle.userData.camPos);
+            camera.rotation.set(0,0,0);
+            if(cockpit) cockpit.visible = scopeLevel===0;
+        } else if(camera.parent===scene){
+            camera.position.copy(_tpHead);
+        }
+        if(gunMesh && mode==='walking') gunMesh.visible = scopeLevel===0;
+        showMessage('FIRST PERSON');
+    }
+}
+// Chase-camera transform for an occupied vehicle (camera is a child of it).
+function applyVehicleChase(v, dt){
+    const t = v.userData.type;
+    let behind=6.4, up=2.5;
+    if(t==='bike'){ behind=4.9; up=2.0; }
+    else if(t==='helicopter'){ behind=9.0; up=3.2; }
+    else if(t==='jet'){ behind=11.5; up=2.6; }
+    _tpDesired.set(0, up, behind);
+    const k = 1-Math.exp(-7*dt);
+    camera.position.lerp(_tpDesired, k);
+    _tpLook.set(0, t==='jet'?0.6:1.1, -3);
+    v.localToWorld(_tpLook);
+    camera.lookAt(_tpLook);
+    const cockpit = v.userData.cockpit;
+    if(cockpit) cockpit.visible = false;
+}
+// Called before walking movement: run the head (eye) simulation from the
+// previously saved eye position even though rendering sits behind it.
+function thirdPersonRestoreHead(){
+    if(thirdPerson && tpHeadSaved && !parachuteActive) camera.position.copy(_tpHead);
+}
+function thirdPersonOnFoot(dt){
+    const av = playerAvatar;
+    if(!av) return;
+    if(isDead || parachuteActive || (jetpackOwned && jetpackActive)){
+        av.visible=false;
+        if(tpHeadSaved) camera.position.copy(_tpHead);
+        tpHeadSaved=false;
+        return;
+    }
+    _tpHead.copy(camera.position); tpHeadSaved=true;
+    camera.getWorldDirection(_tpFwd); _tpFwd.y=0;
+    if(_tpFwd.lengthSq()<0.001) _tpFwd.set(0,0,-1); else _tpFwd.normalize();
+    const dist = 4.4 + (isSprinting?0.7:0);
+    let d = dist;
+    while(d>1.6 && pointIsBlocked(_tpHead.x-_tpFwd.x*d, _tpHead.z-_tpFwd.z*d, 0.7)) d-=0.5;
+    const cx=_tpHead.x-_tpFwd.x*d, cz=_tpHead.z-_tpFwd.z*d;
+    let cy=_tpHead.y+0.95;
+    const gy=terrainHeightAt(cx,cz)+0.6;
+    if(cy<gy) cy=gy;
+    camera.position.set(cx,cy,cz);
+    // Avatar stands at the eye position, facing where the camera faces.
+    av.visible=true;
+    av.position.set(_tpHead.x, _tpHead.y-1.5, _tpHead.z);
+    _tpTmp.set(_tpHead.x+_tpFwd.x, av.position.y, _tpHead.z+_tpFwd.z);
+    av.lookAt(_tpTmp);
+    const spd=Math.hypot(velocity.x,velocity.z);
+    if(spd>1.4){ applyWalkCycle(av.userData, dt, isSprinting?1.9:1); }
+    else { for(const k of ['legL','legR','armL','armR']) av.userData.limbs[k].rotation.x*=Math.exp(-10*dt); }
+    if(gunMesh) gunMesh.visible=false;
 }
 
 // ─── INTERACT ───
@@ -1995,7 +2104,10 @@ function destroyCell(cell,rec,hitPos,radius,force,heavy){
         const kinds=cell.beam?['stone','metal']:cell.roof?['char','wood']:cell.kinds||_buildingDebrisKinds(rec);
         const n=(cell.beam?7:cell.roof?9:4+((Math.random()*3)|0))*(heavy?1.4:1);
         realismFX.fracture({x:cell.x,y:cell.y,z:cell.z},hitPos,Math.round(n),kinds,heavy?17:10+force*6,(rec.zone==='house'?.75:1));
-        if(Math.random()<.6)realismFX.spawnSmoke({x:cell.x,y:cell.y,z:cell.z,r:1.2+Math.random()*1.5,maxR:7,vr:1.2,life:5+Math.random()*5,alpha:.5,hot:.4,buoy:.6,hotColor:0x2b2622,col:0x6a625a});
+        // Thick demolition dust...
+        for(let s=0;s<(heavy?3:2);s++)realismFX.spawnSmoke({x:cell.x+(Math.random()-.5)*cell.w,y:cell.y,z:cell.z+(Math.random()-.5)*cell.d,r:1.4+Math.random()*1.8,maxR:10,vr:1.6,life:7+Math.random()*7,alpha:.7,hot:.4,buoy:.7,hotColor:0x2b2622,col:0x6a625a});
+        // ...and fires that keep burning into soot plumes (houses more often).
+        if(Math.random()<(rec.zone==='house'?.5:cell.beam?.18:.3))realismFX.spawnFire({x:cell.x,y:Math.max(2,cell.y),z:cell.z,r:1.4+Math.random()*1.4,maxR:7,vr:1.2,life:1.2+Math.random()*1.3,vy:5,color:0xff7a22,chain:true});
     }
 }
 function _fallbackRadial(x,z,slot){const h=Math.sin((x*12.9898+z*78.233+(slot+1)*37.719))*43758.5453,a=(h-Math.floor(h))*Math.PI*2;return [Math.cos(a),Math.sin(a)];}
@@ -3507,11 +3619,11 @@ function applyCameraShake(amount){ shakeAmount = Math.max(shakeAmount, amount); 
 function createRealismFramework(host){
     const T = host.THREE, scene = host.scene, camera = host.camera;
     const tierMul = host.veryLowEnd ? .32 : host.lowEnd ? .6 : 1;
-    const CAP_SMOKE = host.veryLowEnd ? 70 : host.lowEnd ? 150 : 260;
-    const CAP_FIRE  = host.veryLowEnd ? 48 : host.lowEnd ? 96 : 170;
-    const CAP_FBALL = 10, CAP_WALL = host.veryLowEnd ? 6 : 14;
-    const CAP_CHUNK = host.veryLowEnd ? 150 : host.lowEnd ? 300 : 520;
-    const CAP_SHARD = host.veryLowEnd ? 90 : host.lowEnd ? 180 : 320;
+    const CAP_SMOKE = host.veryLowEnd ? 150 : host.lowEnd ? 320 : 560;
+    const CAP_FIRE  = host.veryLowEnd ? 96 : host.lowEnd ? 200 : 360;
+    const CAP_FBALL = 12, CAP_WALL = host.veryLowEnd ? 6 : 16;
+    const CAP_CHUNK = host.veryLowEnd ? 180 : host.lowEnd ? 380 : 660;
+    const CAP_SHARD = host.veryLowEnd ? 110 : host.lowEnd ? 220 : 400;
     const FALL_CAP_PER_SPECIES = host.veryLowEnd ? 8 : 18;
     const _m4 = new T.Matrix4(), _q = new T.Quaternion(), _e = new T.Euler(), _s = new T.Vector3(), _p = new T.Vector3();
     const _sun = new T.Vector3(0.6,0.8,0.4);
@@ -3542,16 +3654,16 @@ function createRealismFramework(host){
           uniform vec3 sunDir; uniform vec3 sunCol; uniform vec3 fogCol; uniform float fogFar;
           ${GLSL_NOISE}
           void main(){ float r=length(vL);
-            float shell=smoothstep(1.18,0.12,r);
+            float shell=smoothstep(1.25,0.05,r);
             float n=rfFbm(normalize(vL+vec3(0.001))*1.6 + vL*0.9 + vec3(vSeed*4.1,vSeed*1.7,vSeed*2.9));
-            float dens=shell*smoothstep(0.14,0.72,n);
+            float dens=shell*smoothstep(0.04,0.52,n);
             vec3 N=normalize(vL+vec3(0.0,0.28,0.0));
             float lit=0.22+0.85*max(dot(N,sunDir),0.0);
             float under=smoothstep(0.5,-0.65,vL.y); lit*=1.0-0.38*under;
             vec3 col=vC*lit*sunCol;
             float d=distance(cameraPosition,vW); float fog=smoothstep(fogFar*0.55,fogFar,d);
             col=mix(col,fogCol,fog*0.85);
-            float a=dens*vA; if(a<0.008) discard;
+            float a=min(0.96, dens*vA*1.28); if(a<0.006) discard;
             gl_FragColor=vec4(col,a);
             #include <tonemapping_fragment> #include <colorspace_fragment> }` });
     const fireMat = new T.ShaderMaterial({ transparent:true, depthWrite:false, blending:T.AdditiveBlending, side:T.DoubleSide,
@@ -3735,6 +3847,7 @@ function createRealismFramework(host){
         const i=fire.alloc(), p=fire.st[i];
         p.alive=true; p.x=o.x;p.y=o.y;p.z=o.z; p.vx=o.vx||0;p.vy=o.vy||0;p.vz=o.vz||0;
         p.r=o.r||3; p.maxR=o.maxR||p.r*1.6; p.vr=o.vr||5; p.age=0; p.life=o.life||.9; p.alpha=o.alpha==null?.95:o.alpha; p.seed=Math.random()*40;
+        p.chain=o.chain?true:false;
         fire.seed.setX(i,p.seed); fire.writeColor(i,o.color||0xff7a22);
         return p;
     }
@@ -3758,9 +3871,9 @@ function createRealismFramework(host){
         // smoke — buoyant expansion, Taylor entrainment, axial pull into the stem
         for(let i=0;i<CAP_SMOKE;i++){ const p=smoke.st[i]; if(!p.alive) continue; p.age+=dt;
             if(p.age>=p.life){ p.alive=false; smoke.mesh.setMatrixAt(i,HIDDEN); smoke.alp.setX(i,0); continue; }
-            const heat=Math.max(0,1-p.age/(p.life*0.6));
-            p.vy+=(1.4+p.buoy*5.5)*heat*dt;
-            const entrain=p.vr*(1-Math.exp(-p.age*2.0))+1.2;
+            const heat=Math.max(0,1-p.age/(p.life*0.62));
+            p.vy+=(2.2+p.buoy*8.5)*heat*dt;
+            const entrain=p.vr*1.5*(1-Math.exp(-p.age*2.3))+1.8;
             p.r=Math.min(p.maxR, p.r+entrain*dt);
             if(p.axis){ p.vx+=(p.axis.x-p.x)*p.axis.pull*dt; p.vz+=(p.axis.z-p.z)*p.axis.pull*dt; }
             p.vx+=(windX-p.vx)*Math.min(1,.10*dt); p.vz+=(windZ-p.vz)*Math.min(1,.10*dt);
@@ -3771,13 +3884,16 @@ function createRealismFramework(host){
             const c=_tmpC.copy(p.col0).lerp(p.col1, Math.min(1,ta*1.15)); smoke.col.setXYZ(i,c.r,c.g,c.b);
             setPuffMatrix(smoke,i,p,p.r);
         }
-        // fire — fast hot core, consumed as it cools
+        // fire — fast hot core; when it expires it births a soot puff so fires
+        // keep feeding the plume instead of simply vanishing.
         for(let i=0;i<CAP_FIRE;i++){ const p=fire.st[i]; if(!p.alive) continue; p.age+=dt;
-            if(p.age>=p.life){ p.alive=false; fire.mesh.setMatrixAt(i,HIDDEN); fire.alp.setX(i,0); continue; }
-            p.vy+=7.5*dt; p.vx+=(windX-p.vx)*Math.min(1,.25*dt); p.vz+=(windZ-p.vz)*Math.min(1,.25*dt);
+            if(p.age>=p.life){ p.alive=false; fire.mesh.setMatrixAt(i,HIDDEN); fire.alp.setX(i,0);
+                if(p.chain) spawnSmoke({x:p.x,y:p.y,z:p.z,vx:p.vx*.5,vy:p.vy*.35,vz:p.vz*.5,r:p.r*.9,maxR:p.maxR*3.2,vr:p.vr*.5,life:6+Math.random()*6,alpha:.72,hot:.85,buoy:1.2,hotColor:0x241d18,col:0x5c5650});
+                continue; }
+            p.vy+=11*dt; p.vx+=(windX-p.vx)*Math.min(1,.25*dt); p.vz+=(windZ-p.vz)*Math.min(1,.25*dt);
             p.x+=p.vx*dt; p.y+=p.vy*dt; p.z+=p.vz*dt;
-            p.r=Math.min(p.maxR, p.r+p.vr*dt);
-            const ta=p.age/p.life; fire.alp.setX(i,p.alpha*(1-ta)*(1-ta));
+            p.r=Math.min(p.maxR, p.r+p.vr*1.25*dt);
+            const ta=p.age/p.life; fire.alp.setX(i,p.alpha*(1-ta*.55));
             setPuffMatrix(fire,i,p,p.r);
         }
         for(let i=0;i<CAP_FBALL;i++){ const p=fballs.st[i]; if(!p.alive) continue; p.age+=dt;
@@ -3809,7 +3925,7 @@ function createRealismFramework(host){
         const sc = nuke?2.6:moab?1.7:R>=220?1.25:R>=95?.85:.5; // visual scale band
         const gy = host.getTerrainHeight(pos.x,pos.z);
         const ev = { x:pos.x,y:Math.max(gy,pos.y||gy),z:pos.z, R, age:0, sc, big, nuke, moab, napalm,
-            columnDur: nuke?9:moab?6:big?4.5:1.8, life: nuke?16:moab?12:big?9:4,
+            columnDur: nuke?11:moab?8:big?6:2.8, life: nuke?20:moab?16:big?12:6,
             stemAcc:0, frontTimer:0, fball:null, gy };
         events.push(ev);
         impulseDebris(pos.x,pos.y||gy,pos.z,R*1.1,R*.28);
@@ -3831,45 +3947,48 @@ function createRealismFramework(host){
         }
         // Initial incendiary core: fire puffs expand OUTWARD from centre (not
         // randomly painted): concentric shells give a true incendiary fireball.
-        const fireShells = big?3:2, fireN = Math.round((big?26:10)*tierMul*(.7+sc));
+        // Fire puffs chain into soot smoke as they expire, feeding the plume.
+        const fireShells = big?4:3, fireN = Math.round((big?44:20)*tierMul*(.7+sc));
         for(let sh=0; sh<fireShells; sh++){
-            const rr=R*(.1+sh*.16), n=Math.max(4,Math.round(fireN/(sh+1)));
-            for(let i=0;i<n;i++){ const a=i/n*Math.PI*2+sh*.7, rr2=rr*(.8+Math.random()*.4);
-                spawnFire({ x:pos.x+Math.cos(a)*rr2, y:gy+R*.1+Math.random()*R*.14, z:pos.z+Math.sin(a)*rr2,
-                    vx:Math.cos(a)*R*(.25+sh*.5), vz:Math.sin(a)*R*(.25+sh*.5), vy:R*.18+Math.random()*R*.12,
-                    r:R*(.03+Math.random()*.03)*sc+1.2, maxR:R*.16*sc+6, vr:R*.5, life:.5+Math.random()*.7, color:[0xffffdd,0xffb040,0xff6420][sh%3] }); }
+            const rr=R*(.08+sh*.15), n=Math.max(6,Math.round(fireN/(sh*.75+1)));
+            for(let i=0;i<n;i++){ const a=i/n*Math.PI*2+sh*.7, rr2=rr*(.75+Math.random()*.5);
+                spawnFire({ x:pos.x+Math.cos(a)*rr2, y:gy+R*.08+Math.random()*R*.16, z:pos.z+Math.sin(a)*rr2,
+                    vx:Math.cos(a)*R*(.32+sh*.55), vz:Math.sin(a)*R*(.32+sh*.55), vy:R*.24+Math.random()*R*.16,
+                    r:R*(.032+Math.random()*.034)*sc+1.4, maxR:R*.19*sc+8, vr:R*.62, life:.8+Math.random()*1.0,
+                    color:[0xffffee,0xffc050,0xff8426,0xff5a18][sh%4], chain:true }); }
         }
-        // Dense ground-dust + soot shell hugging the terrain.
-        const dustN = Math.round((nuke?60:big?34:12)*tierMul);
-        for(let i=0;i<dustN;i++){ const a=Math.random()*6.283, rr=Math.random()*R*.5;
+        // Dense ground-dust + soot shell hugging the terrain, kicked out fast.
+        const dustN = Math.round((nuke?110:big?60:26)*tierMul);
+        for(let i=0;i<dustN;i++){ const a=Math.random()*6.283, rr=Math.random()*R*.55;
             spawnSmoke({ x:pos.x+Math.cos(a)*rr, y:gy+1.5+Math.random()*4, z:pos.z+Math.sin(a)*rr,
-                vx:Math.cos(a)*R*(.25+Math.random()*.4), vz:Math.sin(a)*R*(.25+Math.random()*.4), vy:2+Math.random()*4,
-                r:R*.05*sc+2.5, maxR:R*(.34+Math.random()*.18), vr:R*.32, life:(nuke?20:big?14:8)*(.7+Math.random()*.6),
-                alpha:.5+Math.random()*.28, hot:.2, buoy:.35, hotColor:0x4a4038, col:0x8d8478 }); }
+                vx:Math.cos(a)*R*(.4+Math.random()*.55), vz:Math.sin(a)*R*(.4+Math.random()*.55), vy:3+Math.random()*7,
+                r:R*.055*sc+2.8, maxR:R*(.42+Math.random()*.22), vr:R*.42, life:(nuke?24:big?17:10)*(.7+Math.random()*.6),
+                alpha:.62+Math.random()*.3, hot:.3, buoy:.5, hotColor:0x4a4038, col:0x8d8478 }); }
         // Immediate dense smoke shell around the core.
-        const smokeN = Math.round((nuke?46:big?26:9)*tierMul);
+        const smokeN = Math.round((nuke?92:big?52:22)*tierMul);
         for(let i=0;i<smokeN;i++){ const a=Math.random()*6.283, rr=Math.pow(Math.random(),1.4)*R*.5;
-            spawnSmoke({ x:pos.x+Math.cos(a)*rr, y:gy+Math.random()*R*.35+2, z:pos.z+Math.sin(a)*rr,
-                vx:Math.cos(a)*R*.12, vz:Math.sin(a)*R*.12, vy:R*.06+Math.random()*R*.08,
-                r:R*.05*sc+2, maxR:R*(nuke?.5:moab?.42:.32), vr:R*.22,
-                life:(nuke?26:moab?20:big?15:9)*(.65+Math.random()*.6), alpha:nuke?.78:.7,
-                hot:.9, buoy:1.1, axis:big?{x:pos.x,z:pos.z}:null, axisPull:.12,
-                hotColor:big?0x1c1714:0x2b2723, col:nuke?0x62605f:0x5c5854 }); }
+            const up=Math.random();
+            spawnSmoke({ x:pos.x+Math.cos(a)*rr, y:gy+up*R*.4+2, z:pos.z+Math.sin(a)*rr,
+                vx:Math.cos(a)*R*.16, vz:Math.sin(a)*R*.16, vy:R*.1+Math.random()*R*.12,
+                r:R*.055*sc+2.2, maxR:R*(nuke?.58:moab?.5:.4)+4, vr:R*.3,
+                life:(nuke?32:moab?26:big?19:12)*(.65+Math.random()*.7), alpha:nuke?.9:.86,
+                hot:.95, buoy:1.25, axis:big?{x:pos.x,z:pos.z}:null, axisPull:.14,
+                hotColor:big?0x1c1714:0x2b2723, col:nuke?0x686664:0x5f5b56 }); }
         // Ground fracture: stone/dirt chunks thrown by the overpressure.
         const groundChunks = Math.round((nuke?180:moab?120:big?60:R>=30?22:8)*tierMul);
         fracture(pos, pos, groundChunks, ['stone','dirt'], Math.min(52,R*.16), R>200?2.2:1.2);
-        // Napalm leaves persistent fires.
-        if(napalm){ for(let i=0;i<Math.round(26*tierMul);i++){ const a=Math.random()*6.283,rr=Math.random()*R*1.05,x=pos.x+Math.cos(a)*rr,z=pos.z+Math.sin(a)*rr;
-            spawnFire({x,y:host.getTerrainHeight(x,z)+.6,z,r:1+Math.random()*1.4,maxR:5,vr:.6,life:3+Math.random()*3,vy:1.2}); } }
+        // Napalm leaves persistent fires that keep feeding smoke plumes.
+        if(napalm){ for(let i=0;i<Math.round(40*tierMul);i++){ const a=Math.random()*6.283,rr=Math.random()*R*1.05,x=pos.x+Math.cos(a)*rr,z=pos.z+Math.sin(a)*rr;
+            spawnFire({x,y:host.getTerrainHeight(x,z)+.6,z,r:1.2+Math.random()*1.6,maxR:6,vr:.8,life:3.5+Math.random()*4,vy:2.2,chain:true}); } }
         return ev;
     }
     function eventMushroomCap(ev){ // when the fireball dies, leave an opaque cooling cap
-        const n=Math.round((ev.nuke?40:ev.moab?30:18)*tierMul), top=ev.y+ev.R*(ev.nuke?.34:.22);
-        for(let i=0;i<n;i++){ const a=Math.random()*6.283, rr=Math.sqrt(Math.random())*ev.R*(ev.nuke?.42:.24);
+        const n=Math.round((ev.nuke?72:ev.moab?52:ev.big?32:14)*tierMul), top=ev.y+ev.R*(ev.nuke?.34:.22);
+        for(let i=0;i<n;i++){ const a=Math.random()*6.283, rr=Math.sqrt(Math.random())*ev.R*(ev.nuke?.42:.26);
             spawnSmoke({ x:ev.x+Math.cos(a)*rr, y:top+(Math.random()-.5)*ev.R*.08, z:ev.z+Math.sin(a)*rr,
-                vx:Math.cos(a)*ev.R*.04, vz:Math.sin(a)*ev.R*.04, vy:ev.R*.02,
-                r:ev.R*.06+3, maxR:ev.R*(ev.nuke?.62:.5), vr:ev.R*.1, life:ev.nuke?34:24,
-                alpha:.82, hot:.5, buoy:.6, axis:{x:ev.x,z:ev.z}, axisPull:.06, hotColor:0x2b2622, col:0x66635f }); }
+                vx:Math.cos(a)*ev.R*.05, vz:Math.sin(a)*ev.R*.05, vy:ev.R*.03,
+                r:ev.R*.07+3, maxR:ev.R*(ev.nuke?.7:.58), vr:ev.R*.14, life:ev.nuke?40:28,
+                alpha:.9, hot:.5, buoy:.7, axis:{x:ev.x,z:ev.z}, axisPull:.06, hotColor:0x2b2622, col:0x66635f }); }
     }
     function updateEvents(dt, windX, windZ){
         for(let e=events.length-1;e>=0;e--){ const ev=events[e]; ev.age+=dt;
@@ -3877,31 +3996,31 @@ function createRealismFramework(host){
             if(ev.fball && !ev.fball.alive){ eventMushroomCap(ev); ev.fball=null; }
             if(ev.age<ev.columnDur){
                 // Rising thermal column: puffs born along the stem as it climbs.
-                const rise = ev.R*(ev.nuke?.16:ev.moab?.13:.1);
-                const stemH = Math.min(ev.R*(ev.nuke?.9:ev.moab?.6:3.4), ev.age*rise);
-                const rate=(ev.nuke?26:ev.big?15:6)*tierMul; ev.stemAcc+=dt*rate;
+                const rise = ev.R*(ev.nuke?.22:ev.moab?.18:ev.big?.14:.16);
+                const stemH = Math.min(ev.R*(ev.nuke?1.2:ev.moab?.85:ev.big?.5:4.4), ev.age*rise);
+                const rate=(ev.nuke?48:ev.big?28:14)*tierMul; ev.stemAcc+=dt*rate;
                 while(ev.stemAcc>1){ ev.stemAcc-=1;
                     const f=Math.random(); const yy=Math.pow(f,1.25)*stemH;
-                    const stemR=(2.5+yy*.05)*(ev.sc+.4);
+                    const stemR=(3+yy*.06)*(ev.sc+.45);
                     const a=Math.random()*6.283, rr=Math.random()*stemR;
                     spawnSmoke({ x:ev.x+Math.cos(a)*rr, y:ev.gy+yy, z:ev.z+Math.sin(a)*rr,
-                        vx:(Math.random()-.5)*ev.R*.03, vz:(Math.random()-.5)*ev.R*.03, vy:rise*.55+Math.random()*4,
-                        r:stemR*(.7+Math.random()*.5), maxR:stemR*6+ev.R*.12, vr:4+ev.R*.03,
-                        life:(ev.nuke?30:ev.big?18:9)*(.7+Math.random()*.6), alpha:ev.nuke?.8:.72,
-                        hot:1-f*.6, buoy:1.3-f*.5, axis:{x:ev.x,z:ev.z}, axisPull:.42*(1-f),
+                        vx:(Math.random()-.5)*ev.R*.04, vz:(Math.random()-.5)*ev.R*.04, vy:rise*.6+Math.random()*6,
+                        r:stemR*(.75+Math.random()*.5), maxR:stemR*7+ev.R*.14, vr:6+ev.R*.04,
+                        life:(ev.nuke?36:ev.big?22:12)*(.7+Math.random()*.7), alpha:ev.nuke?.9:.84,
+                        hot:1-f*.6, buoy:1.45-f*.45, axis:{x:ev.x,z:ev.z}, axisPull:.42*(1-f),
                         hotColor:0x171310, col:ev.nuke?0x5f5d5c:0x595450 });
-                    if(ev.age<.9 && Math.random()<.4) spawnFire({x:ev.x+Math.cos(a)*rr*1.4,y:ev.gy+yy*.4,z:ev.z+Math.sin(a)*rr*1.4,
-                        r:2+Math.random()*2,maxR:ev.sc*8,vr:3,life:.8+Math.random()*.5,vy:6,color:0xff8030});
+                    if(ev.age<1.1 && Math.random()<.5) spawnFire({x:ev.x+Math.cos(a)*rr*1.4,y:ev.gy+yy*.4,z:ev.z+Math.sin(a)*rr*1.4,
+                        r:2.5+Math.random()*2.5,maxR:ev.sc*10,vr:4,life:.9+Math.random()*.7,vy:9,color:0xff8030,chain:true});
                 }
                 // Dust kicked up by the advancing shock front.
                 ev.frontTimer-=dt;
-                if(ev.big && ev.frontTimer<=0 && ev.age<2.6){ ev.frontTimer=.18;
-                    const frontR=Math.min(ev.R*1.5, ev.R*.1+ev.age*ev.R*.9);
-                    const n=Math.round(10*tierMul);
+                if(ev.frontTimer<=0 && ev.age<(ev.big?3.2:1.4)){ ev.frontTimer=ev.big?.16:.22;
+                    const frontR=Math.min(ev.R*1.5, ev.R*.1+ev.age*ev.R*.95);
+                    const n=Math.round((ev.big?16:8)*tierMul);
                     for(let i=0;i<n;i++){ const a=Math.random()*6.283, rr=frontR*(.9+Math.random()*.2);
                         spawnSmoke({x:ev.x+Math.cos(a)*rr,y:ev.gy+1.5,z:ev.z+Math.sin(a)*rr,
-                            vx:Math.cos(a)*ev.R*.5, vz:Math.sin(a)*ev.R*.5, vy:2+Math.random()*3,
-                            r:3+Math.random()*3,maxR:ev.R*.16+8,vr:ev.R*.2,life:7+Math.random()*5,alpha:.5,hot:0,buoy:.25,hotColor:0x4b4236,col:0x978c7c}); }
+                            vx:Math.cos(a)*ev.R*.55, vz:Math.sin(a)*ev.R*.55, vy:2.5+Math.random()*4,
+                            r:3.5+Math.random()*3.5,maxR:ev.R*.2+10,vr:ev.R*.28,life:8+Math.random()*6,alpha:.6,hot:0,buoy:.35,hotColor:0x4b4236,col:0x978c7c}); }
                 }
             }
             if(ev.age>ev.life && !ev.fball) events.splice(e,1);
@@ -4961,6 +5080,7 @@ document.addEventListener('keydown', (e)=>{
             break;
         case 'KeyV': if(jetpackOwned && mode==='walking'){ jetpackActive=!jetpackActive; showMessage(jetpackActive?'🛩 Jetpack ON':'🛩 Jetpack OFF'); } break;
         case 'KeyE': interact(); break;
+        case 'KeyJ': toggleThirdPerson(); break;
         case 'Digit1': switchWeapon(0); break;
         case 'Digit2': switchWeapon(1); break;
         case 'Digit3': switchWeapon(2); break;
@@ -5537,8 +5657,10 @@ function animate(){
             if(parachuteMesh) scene.remove(parachuteMesh);
             showMessage('Landed');
         }
+        if(thirdPerson){ if(playerAvatar) playerAvatar.visible=false; tpHeadSaved=false; }
     }
     else if(mode === 'walking' && !isDead){
+        thirdPersonRestoreHead();
         velocity.x -= velocity.x * 6.5 * dt;
         velocity.z -= velocity.z * 6.5 * dt;
         if(jetpackOwned && jetpackActive && !parachuteActive){
@@ -5620,6 +5742,7 @@ function animate(){
             gunMesh.rotation.z = recoilX*0.2;
             gunMesh.visible = scopeLevel === 0;
         }
+        if(thirdPerson) thirdPersonOnFoot(dt);
     }
 
     if((mode === 'car' || mode === 'bike') && currentVehicle){
@@ -5653,6 +5776,8 @@ function animate(){
         const lim = CFG.citySize/2 - 100;
         v.position.x = Math.min(lim, Math.max(-lim, v.position.x));
         v.position.z = Math.min(lim, Math.max(-lim, v.position.z));
+        if(!missileView && thirdPerson) applyVehicleChase(v, dt);
+        else if(currentVehicle && currentVehicle.userData.cockpit) currentVehicle.userData.cockpit.visible = (thirdPerson?false:scopeLevel===0);
     }
 
     if(mode === 'helicopter' && currentVehicle){
@@ -5691,7 +5816,7 @@ function animate(){
         const lim = CFG.citySize/2 + 3000;
         h.position.x = Math.min(lim, Math.max(-lim, h.position.x));
         h.position.z = Math.min(lim, Math.max(-lim, h.position.z));
-        if(!missileView) camera.position.copy(h.userData.camPos);
+        if(!missileView){ if(thirdPerson) applyVehicleChase(h,dt); else camera.position.copy(h.userData.camPos); }
     }
 
     if(mode === 'jet' && currentVehicle){
@@ -5699,7 +5824,7 @@ function animate(){
         updateJetFlight(j,dt);
         if(currentVehicle===j){
             updateFlightHUD(j,dt);
-            if(!missileView){ camera.position.copy(j.userData.camPos); stallBuffet(j,dt); }
+            if(!missileView){ if(thirdPerson) applyVehicleChase(j,dt); else { camera.position.copy(j.userData.camPos); stallBuffet(j,dt); } }
         }
     }
 
