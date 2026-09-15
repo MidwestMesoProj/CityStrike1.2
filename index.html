@@ -39,6 +39,7 @@ body{overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:#1a2
 #scope-info{position:absolute;bottom:14vh;left:50%;transform:translateX(-50%);color:rgba(120,220,255,.8);font-family:'Segoe UI',monospace;font-size:11px;letter-spacing:2px;text-shadow:0 0 8px rgba(0,200,255,.5)}
 #blast-overlay{position:absolute;top:0;left:0;width:100%;height:100%;background:radial-gradient(circle,rgba(30,20,10,.4) 0%,rgba(0,0,0,.75) 100%);opacity:0;pointer-events:none;transition:opacity 1.2s ease-out;z-index:8}
 #blast-overlay.active{transition:opacity .2s ease-in;opacity:1}
+#flash-overlay{position:absolute;top:0;left:0;width:100%;height:100%;background:radial-gradient(circle,rgba(255,255,245,1) 0%,rgba(255,244,214,.92) 45%,rgba(255,214,150,.55) 100%);opacity:0;pointer-events:none;z-index:9;mix-blend-mode:screen}
 #hud{position:absolute;top:14px;left:16px;color:#e8f4ff;font-size:13px;text-shadow:0 2px 10px rgba(0,0,0,.9);display:flex;flex-direction:column;gap:4px;font-weight:500;z-index:10;pointer-events:none;font-family:'Segoe UI',monospace;letter-spacing:.3px}
 #health-container{width:150px;height:14px;background:#0a1a2a;border:1px solid #4a8aaa;border-radius:14px;overflow:hidden}
 #health-bar{width:100%;height:100%;background:linear-gradient(90deg,#ff5060,#ffa060);transition:width .12s}
@@ -142,6 +143,7 @@ body{overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:#1a2
 <div id="fps-counter">FPS --</div><div id="missile-cam-badge">MISSILE POV · ; TO EXIT</div><div id="sun-disc"></div>
 <div id="damage-overlay"></div>
 <div id="blast-overlay"></div>
+<div id="flash-overlay"></div>
 <div id="wasted-screen"><div>✕ WASTED</div><div>Click to respawn</div></div>
 <div id="scope-overlay">
   <div id="scope-reticle">
@@ -238,7 +240,7 @@ body{overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:#1a2
 <div class="settings-group"><label>Time of day</label><input type="range" id="time-slider" min="0" max="24" step="0.1" value="14"><span id="time-val">14:00</span></div>
 <div class="settings-group"><label>Difficulty</label><select id="diff-select"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select></div>
 <div class="settings-group"><label>Speed</label><input type="range" id="speed-slider" min="200" max="700" value="420"><span id="speed-val">420</span></div>
-<div class="settings-group"><label>NPCs</label><input type="range" id="enemy-slider" min="30" max="500" value="192"><span id="enemy-val">192</span></div>
+<div class="settings-group"><label>NPCs</label><input type="range" id="enemy-slider" min="30" max="900" value="320"><span id="enemy-val">320</span></div>
 <div style="margin-top:14px;"><button class="settings-btn primary" id="settings-apply">APPLY</button><button class="settings-btn" id="settings-close">CLOSE</button></div>
 </div>
 <div id="blocker">
@@ -298,10 +300,19 @@ if(VERY_LOW_MEM){
     CFG.cullDistance   = 5500;
     CFG.renderDistance = 5000;
 }
-// Conservative defaults for integrated/mobile graphics; quality reacts to measured frame time.
-CFG.npcCount=VERY_LOW_MEM?70:140;CFG.enemyCount=VERY_LOW_MEM?18:40;CFG.copCount=12;
-CFG.carCount=VERY_LOW_MEM?26:56;CFG.helicopterCount=8;CFG.farmCount=20;CFG.townCount=24;
-CFG.maxActiveNPCs=40;CFG.maxActiveCars=20;CFG.forestTreesPerCluster=24;CFG.batchCell=1536;
+// Dense, living-world defaults. navigator.deviceMemory is capped at 8 by browsers,
+// so core count separates desktop-class machines from integrated/mobile devices.
+const DECENT_GPU = DEVICE_MEM >= 8 && (navigator.hardwareConcurrency || 4) >= 8;
+CFG.npcCount=VERY_LOW_MEM?90:LOW_MEM?(DECENT_GPU?340:220):260;
+CFG.enemyCount=VERY_LOW_MEM?20:LOW_MEM?(DECENT_GPU?96:60):70;
+CFG.copCount=VERY_LOW_MEM?12:(DECENT_GPU?44:26);
+CFG.carCount=VERY_LOW_MEM?28:(DECENT_GPU?132:84);CFG.helicopterCount=VERY_LOW_MEM?6:10;
+CFG.farmCount=VERY_LOW_MEM?20:(DECENT_GPU?72:44);CFG.townCount=VERY_LOW_MEM?24:(DECENT_GPU?48:32);
+CFG.forestClusterCount=VERY_LOW_MEM?26:(DECENT_GPU?64:48);
+CFG.forestTreesPerCluster=VERY_LOW_MEM?20:(DECENT_GPU?52:34);
+CFG.maxActiveNPCs=VERY_LOW_MEM?28:(DECENT_GPU?78:52);CFG.maxSimDistance=VERY_LOW_MEM?170:(DECENT_GPU?270:215);
+CFG.maxActiveCars=VERY_LOW_MEM?14:(DECENT_GPU?42:26);CFG.batchCell=VERY_LOW_MEM?1536:2600;
+CFG.detailDistance=0;
 const CITY_CENTERS=[
     {id:'nw',name:'Northwest City',x:-15500,z:-13500},{id:'ne',name:'Northeast City',x:15500,z:-13500},
     {id:'sw',name:'Southwest City',x:-15500,z:13500},{id:'se',name:'Southeast City',x:15500,z:13500}
@@ -510,24 +521,56 @@ function stampTerrainScorch(pos,radius,seconds){if(!worldNature.scorches)return;
 function updateTerrainScorches(dt){if(!worldNature.scorches)return;for(let i=0;i<8;i++){terrainScorchLife[i]=Math.max(0,terrainScorchLife[i]-dt);worldNature.scorches.value[i].w=terrainScorchLife[i]/(terrainScorchMax[i]||1);}}
 function createVolumetricClouds(){
     if(worldNature.cloudMaterial)return;
-    const mat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,depthTest:true,side:THREE.DoubleSide,
-      uniforms:{noiseAtlas:{value:getNatureNoise()},natureTime:worldNature.time,light:{value:1},sunTint:{value:sun.color.clone()},fogTint:{value:scene.fog.color.clone()},fogFar:{value:CFG.renderDistance}},
-      vertexShader:`varying vec3 vCloudWorld;void main(){vec4 w=modelMatrix*vec4(position,1.);vCloudWorld=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}`,
-      fragmentShader:`uniform sampler2D noiseAtlas;uniform float natureTime,light,fogFar;uniform vec3 sunTint,fogTint;varying vec3 vCloudWorld;void main(){
-        vec2 uv=vCloudWorld.xz/3600.+vec2(natureTime*.00032,natureTime*.00012)+vCloudWorld.y*.0017;
+    // True fly-through volume: a vertical stack of noise planes (two cumulus
+    // bands plus high cirrus). Looking horizontally or flying through the stack
+    // accumulates layer after layer instead of showing a single painted sheet.
+    const layers=[];
+    const N=VERY_LOW_MEM?7:LOW_MEM?11:18;
+    const bandProfile=(y)=>Math.exp(-((y-780)**2)/(2*300**2))*.95+Math.exp(-((y-1040)**2)/(2*180**2))*.42;
+    for(let i=0;i<N;i++){const f=i/(N-1),y=430+f*(1120-430);
+        layers.push({y,coverage:.44,weight:bandProfile(y),cirrus:0,scale:.00028});}
+    const cN=VERY_LOW_MEM?1:3;
+    for(let i=0;i<cN;i++)layers.push({y:1650+i*300,coverage:.62,weight:.16,cirrus:1,scale:.00012});
+    const geo=new THREE.PlaneGeometry(32000,32000);geo.rotateX(-Math.PI/2);
+    // Shared uniform objects so the existing update loop tints every slice at once.
+    const light={value:1},sunTint={value:sun.color.clone()},fogTint={value:scene.fog.color.clone()},fogFar={value:CFG.renderDistance};
+    worldNature.cloudMaterial={uniforms:{light,sunTint,fogTint,fogFar}};
+    worldNature.cloudSlices=[];
+    const vert=`varying vec3 vCloudWorld;void main(){vec4 w=modelMatrix*vec4(position,1.);vCloudWorld=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}`;
+    const frag=`uniform sampler2D noiseAtlas;uniform float natureTime,light,fogFar,uWeight,uCoverage,uCirrus,uInCloud,uScale;uniform vec3 sunTint,fogTint;varying vec3 vCloudWorld;
+      void main(){
+        vec2 uv=vCloudWorld.xz*uScale+vec2(natureTime*.00032,natureTime*.00012)+vCloudWorld.y*.00017;
         float a=texture2D(noiseAtlas,uv).r,b=texture2D(noiseAtlas,uv*2.91+.19).r,c=texture2D(noiseAtlas,uv*6.2+.43).r;
-        float density=smoothstep(.46,.64,a*.68+b*.24+c*.08),rim=texture2D(noiseAtlas,uv+vec2(.014,.006)).r-a;
-        float f=smoothstep(fogFar*.52,fogFar,length(vCloudWorld-cameraPosition));
-        float alpha=density*.67*(1.-f)*smoothstep(5.,32.,abs(vCloudWorld.y-cameraPosition.y));if(alpha<.007)discard;
-        vec3 shade=mix(vec3(.022,.032,.055),sunTint*clamp(.69+rim*6.+b*.34,.40,1.1),clamp(light,0.,1.));
-        gl_FragColor=vec4(mix(shade,fogTint,f*.5),alpha);
+        float density;
+        if(uCirrus>.5){ float wisp=c*.5+b*.5; density=smoothstep(uCoverage,uCoverage+.3,wisp)*.5; }
+        else { float shape=a*.68+b*.24+c*.08; density=smoothstep(uCoverage,uCoverage+.32,shape); }
+        float rim=texture2D(noiseAtlas,uv+vec2(.014,.006)).r-a;
+        density*=uWeight*(1.0+uInCloud*2.6);
+        float f=smoothstep(fogFar*.6,fogFar,length(vCloudWorld-cameraPosition));
+        // Slices far above/below the camera fade gently so entering the band is smooth.
+        float vf=uCirrus>.5?1.0:smoothstep(0.,90.,abs(vCloudWorld.y-cameraPosition.y));
+        float alpha=clamp(density*(1.-f)*(uCirrus>.5?vf:mix(.55,1.,vf))*(1.+uInCloud*1.8),0.,uCirrus>.5?.32:.9);
+        if(alpha<.006)discard;
+        vec3 shade=mix(vec3(.03,.045,.075),sunTint*clamp(.69+rim*6.+b*.34,.40,1.1),clamp(light,0.,1.));
+        if(uCirrus>.5)shade=mix(shade,vec3(1.),.35);
+        vec3 col=mix(shade,fogTint,f*.6);
+        // Inside the cloud band everything washes toward bright white fog.
+        col=mix(col,mix(vec3(1.),fogTint,.35),uInCloud*.9);
+        gl_FragColor=vec4(col,alpha);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
-      }`});
-    const geo=new THREE.PlaneGeometry(26000,26000);geo.rotateX(-Math.PI/2);worldNature.cloudMaterial=mat;
-    for(const y of (VERY_LOW_MEM?[520]:[460,660])){const cloud=new THREE.Mesh(geo,mat);cloud.position.set(camera.position.x,y,camera.position.z);cloud.frustumCulled=false;cloud.renderOrder=3;scene.add(cloud);worldNature.clouds.push(cloud);}
+      }`;
+    for(const L of layers){
+        const mat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,depthTest:true,side:THREE.DoubleSide,
+            uniforms:{noiseAtlas:{value:getNatureNoise()},natureTime:worldNature.time,light,sunTint,fogTint,fogFar,
+                uWeight:{value:L.weight},uCoverage:{value:L.coverage},uCirrus:{value:L.cirrus},uScale:{value:L.scale},
+                uInCloud:{value:0},uCamY:{value:0},uAlt:{value:L.y}},
+            vertexShader:vert,fragmentShader:frag});
+        const cloud=new THREE.Mesh(geo,mat);cloud.position.set(camera.position.x,L.y,camera.position.z);
+        cloud.frustumCulled=false;cloud.renderOrder=3;scene.add(cloud);
+        worldNature.clouds.push(cloud);worldNature.cloudSlices.push(mat);
+    }
 }
-
 function generateNatureTileRow(t){
  const row=t.row++,h=t.heights,step=t.s/16,g=t.mesh.geometry,a=g.attributes;
  if(row<19){for(let x=0;x<19;x++)h[row*19+x]=terrainHeightAt(t.x+(x-1)*step,t.z+(row-1)*step);return false;}
@@ -574,7 +617,13 @@ function updateWorldNature(dt,cameraPosition){
         for(const tile of pending.map.values())tile.mesh.visible=true;worldNature.active=pending.map;worldNature.signature=pending.signature;worldNature.center.copy(pending.center);worldNature.pending=null;}
     updateNatureGrass(cameraPosition);updateForestLOD(cameraPosition);
     if(worldNature.cloudMaterial){const u=worldNature.cloudMaterial.uniforms;u.light.value=Math.max(.035,sun.intensity/2.75);u.sunTint.value.copy(sun.color);u.fogTint.value.copy(scene.fog?scene.fog.color:scene.background);u.fogFar.value=scene.fog?scene.fog.far:CFG.renderDistance;
-        for(const cloud of worldNature.clouds){cloud.position.x=cameraPosition.x;cloud.position.z=cameraPosition.z;}}
+        for(const cloud of worldNature.clouds){cloud.position.x=cameraPosition.x;cloud.position.z=cameraPosition.z;}
+        // Wash the view toward white when flying through the cumulus/cirrus bands.
+        const cy=cameraPosition.y;
+        const inCore=Math.exp(-((cy-780)**2)/(2*130**2))*.62+Math.exp(-((cy-1040)**2)/(2*90**2))*.3;
+        const inCirrus=Math.exp(-Math.min(Math.abs(cy-1650),Math.abs(cy-1950),Math.abs(cy-2250))/120)*.22;
+        if(worldNature.cloudSlices)for(const m of worldNature.cloudSlices){m.uniforms.uInCloud.value=m.uniforms.uCirrus.value>.5?inCirrus:inCore;}
+    }
 }
 
 // ─── RENDERER / SCENE ───
@@ -1051,6 +1100,9 @@ const mapState = { zoom: 0.26, panX: 0, panZ: 0, locked: false, dragging: false,
 const debrisPanels = [];
 const DEBRIS_GRAVITY = 22;
 const DEBRIS_MAX = VERY_LOW_MEM ? 180 : LOW_MEM ? 320 : 600;
+// Realism framework handle (assigned once after the pooled FX factory below).
+let realismFX = null;
+const roadPatrolWaypoints = [];
 
 
 
@@ -1594,7 +1646,7 @@ const BUILDING_TOWN_RESERVE = VERY_LOW_MEM ? 80 : LOW_MEM ? 160 : 320;
 const CITY_BUILDING_LIMIT = Math.floor((BUILDING_LIMIT - BUILDING_TOWN_RESERVE) / CITY_CENTERS.length);
 const BUILDING_CHUNK_SIZE = 3072;
 const BUILDING_WINDOW_CAP = VERY_LOW_MEM ? 420 : LOW_MEM ? 650 : 880;
-const BUILDING_RUIN_CAP = VERY_LOW_MEM ? 700 : LOW_MEM ? 1200 : 1900;
+const BUILDING_RUIN_CAP = VERY_LOW_MEM ? 700 : LOW_MEM ? (DECENT_GPU?2600:1200) : 1900;
 const BUILDING_DEBRIS_CAP = VERY_LOW_MEM ? 300 : LOW_MEM ? 520 : 1000;
 const BUILDING_WINDOW_SHARD_CAP = VERY_LOW_MEM ? 180 : LOW_MEM ? 360 : 640;
 const _bHidden = new THREE.Matrix4().makeScale(0,0,0);
@@ -1626,7 +1678,7 @@ const BUILDING_GABLE_GEO = (() => {
 })();
 const buildingRender = {
     finalized:false, parts:[], chunks:new Map(), chunkList:[], meshes:[], windowMesh:null,
-    ruinMesh:null, ruinFree:[], debrisMesh:null, debrisFree:[], lastLOD:-Infinity,
+    ruinMesh:null, ruinFree:[], charMesh:null, charFree:[], debrisMesh:null, debrisFree:[], lastLOD:-Infinity,
     bodyGeo:new THREE.BoxGeometry(1,1,1), thinGeo:new THREE.BoxGeometry(1,1,1),
     lodCells:new Map(), lodCandidates:[], windowOwners:new Array(BUILDING_WINDOW_CAP), activeCityId:null, cityCounts:new Map(),
     activeTownLimit:0, activeTownCount:0, townBuilt:0,
@@ -1647,6 +1699,8 @@ const buildingMats = {
     // No blending/depth-write exception: individual panes are solid near geometry.
     window:makeEfficientMaterial({color:0x14283a,roughness:.34,metalness:.18,emissive:0x07101a,emissiveIntensity:.7,transparent:false}),
     rubble:makeEfficientMaterial({color:0xffffff,roughness:.96,metalness:0,vertexColors:true}),
+    // Carbonised standing wall surface: fractured walls stay upright but charred.
+    char:makeEfficientMaterial({color:0x19130e,roughness:1,metalness:0}),
     windowShard:makeEfficientMaterial({color:0x91bdd2,roughness:.18,metalness:.08,transparent:true,opacity:.72,side:THREE.DoubleSide,depthWrite:false})
 };
 
@@ -1728,7 +1782,7 @@ function _newBuilding(x,z,w,d,h,zone,color,matKind,extra={}){
     const groundY=terrainHeightAt(x,z),rot=extra.rot||0;
     const box=_worldBox(x,groundY+h*.5,z,w,h,d,rot);
     const rec={box,roofY:groundY+h,x,z,w,d,h,groundY,minX:box.min.x,maxX:box.max.x,minZ:box.min.z,maxZ:box.max.z,
-        lootClaimed:false,originalMesh:null,mat:_buildingMat(matKind),panelized:false,panels:[],damage:0,zone,color,rot,
+        lootClaimed:false,originalMesh:null,mat:_buildingMat(matKind),matKind,panelized:false,panels:[],damage:0,zone,color,rot,
         resistance:extra.resistance||.4,parts:[],cells:null,cellProxies:[],ruined:false,commercialType:extra.commercialType,cityId:area||null};
     rec.originalMesh=_makeProxy(rec); box.userData={buildingRec:rec}; colliders.push(box); colliderGrid.insertBox(box); buildings.push(rec);
     if(area)buildingRender.cityCounts.set(area,(buildingRender.cityCounts.get(area)||0)+1); else if(buildingRender.activeTownLimit)buildingRender.activeTownCount++;
@@ -1788,7 +1842,7 @@ function createLocalCity(city){
     buildingRender.activeCityId=previous;
 }
 function createTown(cx,cz,index){
-    TOWN_CENTERS.push({id:'town'+index,name:'Town '+String(index+1).padStart(2,'0'),x:cx,z:cz});const previousLimit=buildingRender.activeTownLimit,previousCount=buildingRender.activeTownCount,n=CFG.townCount,quota=Math.floor(BUILDING_TOWN_RESERVE/n)+(index<BUILDING_TOWN_RESERVE%n?1:0);buildingRender.activeTownLimit=quota;buildingRender.activeTownCount=0;
+    TOWN_CENTERS.push({id:'town'+index,name:'Town '+String(index+1).padStart(2,'0'),x:cx,z:cz,organicR:150+Math.random()*130,seed:Math.random()*100});const previousLimit=buildingRender.activeTownLimit,previousCount=buildingRender.activeTownCount,n=CFG.townCount,quota=Math.floor(BUILDING_TOWN_RESERVE/n)+(index<BUILDING_TOWN_RESERVE%n?1:0);buildingRender.activeTownLimit=quota;buildingRender.activeTownCount=0;
     createMediumRise(cx,cz);for(let i=0;i<8&&buildingRender.activeTownCount<quota;i++){const a=i*Math.PI*.25,r=95+(i%3)*58;createSuburbHouse(cx+Math.cos(a)*r,cz+Math.sin(a)*r,true);}if(buildingRender.activeTownCount<quota)createCommercialBuilding(cx+95,cz,'store');if(buildingRender.activeTownCount<quota)createCommercialBuilding(cx-95,cz,'gas');buildingRender.townBuilt+=buildingRender.activeTownCount;buildingRender.activeTownLimit=previousLimit;buildingRender.activeTownCount=previousCount;
 }
 function seedUrbanTrees(){for(const city of CITY_CENTERS)for(let lx=-CFG.suburbRadius;lx<=CFG.suburbRadius;lx+=CFG.blockSize)for(let lz=-CFG.suburbRadius;lz<=CFG.suburbRadius;lz+=CFG.blockSize){const d=Math.hypot(lx,lz);if(d<CFG.downtownRadius||d>CFG.suburbRadius)continue;const n=d<CFG.mixedUrbanRadius?1:2;for(let i=0;i<n;i++){const x=city.x+lx+(i?55:-55),z=city.z+lz+(i?70:-70);if(!pointIsBlocked(x,z,3)&&(!(typeof roadClearAt==='function')||roadClearAt(x,z,3)))createStreetTree(x,z,.9+Math.random()*.25);}}}
@@ -1799,6 +1853,8 @@ function finalizeBuildingInstances(){
     for(const c of buildingRender.chunkList){const a=c.parts,mesh=new THREE.InstancedMesh(a[0].geo,a[0].mat,a.length);mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.castShadow=false;mesh.receiveShadow=true;mesh.frustumCulled=true;mesh.userData={buildingChunk:true,chunkX:c.ix,chunkZ:c.iz};scene.add(mesh);buildingRender.meshes.push(mesh);c.mesh=mesh;for(let i=0;i<a.length;i++){a[i].handle={mesh,index:i};_setPartMatrix(a[i]);}mesh.computeBoundingSphere();}
     const wm=new THREE.InstancedMesh(buildingRender.thinGeo,buildingMats.window,BUILDING_WINDOW_CAP);wm.instanceMatrix.setUsage(THREE.DynamicDrawUsage);wm.frustumCulled=false;for(let i=0;i<BUILDING_WINDOW_CAP;i++)wm.setMatrixAt(i,_bHidden);wm.instanceMatrix.needsUpdate=true;scene.add(wm);buildingRender.windowMesh=wm;
     const rm=new THREE.InstancedMesh(BUILDING_DAMAGE_PANEL_GEO,buildingMats.concrete,BUILDING_RUIN_CAP);rm.instanceMatrix.setUsage(THREE.DynamicDrawUsage);rm.frustumCulled=false;for(let i=0;i<BUILDING_RUIN_CAP;i++){rm.setMatrixAt(i,_bHidden);buildingRender.ruinFree.push(i);}rm.instanceMatrix.needsUpdate=true;scene.add(rm);buildingRender.ruinMesh=rm;
+    // Charred (still-standing) walls occupy a parallel pool so charring never steals ruin capacity.
+    const cm=new THREE.InstancedMesh(BUILDING_DAMAGE_PANEL_GEO,buildingMats.char,BUILDING_RUIN_CAP);cm.instanceMatrix.setUsage(THREE.DynamicDrawUsage);cm.frustumCulled=false;cm.receiveShadow=true;for(let i=0;i<BUILDING_RUIN_CAP;i++){cm.setMatrixAt(i,_bHidden);buildingRender.charFree.push(i);}cm.instanceMatrix.needsUpdate=true;scene.add(cm);buildingRender.charMesh=cm;
     const dm=new THREE.InstancedMesh(BUILDING_DAMAGE_PANEL_GEO,buildingMats.rubble,BUILDING_DEBRIS_CAP);dm.instanceMatrix.setUsage(THREE.DynamicDrawUsage);dm.frustumCulled=false;for(let i=0;i<BUILDING_DEBRIS_CAP;i++){dm.setMatrixAt(i,_bHidden);buildingRender.debrisFree.push(i);}dm.instanceMatrix.needsUpdate=true;scene.add(dm);buildingRender.debrisMesh=dm;
     const sm=new THREE.InstancedMesh(BUILDING_WINDOW_SHARD_GEO,buildingMats.windowShard,BUILDING_WINDOW_SHARD_CAP);sm.instanceMatrix.setUsage(THREE.DynamicDrawUsage);sm.frustumCulled=false;for(let i=0;i<BUILDING_WINDOW_SHARD_CAP;i++){sm.setMatrixAt(i,_bHidden);buildingRender.windowShardFree.push(i);}sm.instanceMatrix.needsUpdate=true;scene.add(sm);buildingRender.windowShardMesh=sm;
 }
@@ -1833,8 +1889,8 @@ function _hideBuildingWindows(rec,blastPos){if(!buildingRender.windowMesh)return
 function updateBuildingLOD(cameraPos){
     if(!buildingRender.finalized)return;const now=performance.now();if(now-buildingRender.lastLOD<180)return;buildingRender.lastLOD=now;
     // Chunk visibility is a coarse distance gate followed by Three's per-chunk frustum culling.
-    const render=Math.min(CFG.renderDistance,4800);for(const c of buildingRender.chunkList){const dx=(c.ix+.5)*BUILDING_CHUNK_SIZE-cameraPos.x,dz=(c.iz+.5)*BUILDING_CHUNK_SIZE-cameraPos.z,r=(c.mesh.boundingSphere?.radius||BUILDING_CHUNK_SIZE);const range=c.parts[0].kind==='accessory'?1800:render;c.mesh.visible=dx*dx+dz*dz<(range+r)*(range+r);}
-    const near=buildingRender.lodCandidates;near.length=0;const reach=760,cr=Math.ceil(reach/BUILDING_CHUNK_SIZE),ix=_chunkCoord(cameraPos.x),iz=_chunkCoord(cameraPos.z);for(let x=ix-cr;x<=ix+cr;x++)for(let z=iz-cr;z<=iz+cr;z++){const a=buildingRender.lodCells.get(_lodKey(x,z));if(!a)continue;for(const rec of a){if(rec.ruined||rec.panelized)continue;const dx=rec.x-cameraPos.x,dz=rec.z-cameraPos.z,ds=dx*dx+dz*dz;if(ds<reach*reach)near.push([ds,rec]);}}near.sort((a,b)=>a[0]-b[0]);
+    const render=Math.min(CFG.renderDistance,CFG.detailDistance||4200),accessoryRange=render*.42;for(const c of buildingRender.chunkList){const dx=(c.ix+.5)*BUILDING_CHUNK_SIZE-cameraPos.x,dz=(c.iz+.5)*BUILDING_CHUNK_SIZE-cameraPos.z,r=(c.mesh.boundingSphere?.radius||BUILDING_CHUNK_SIZE);const range=c.parts[0].kind==='accessory'?accessoryRange:render;c.mesh.visible=dx*dx+dz*dz<(range+r)*(range+r);}
+    const near=buildingRender.lodCandidates;near.length=0;const reach=Math.round((CFG.detailDistance||4200)*.17),cr=Math.ceil(reach/BUILDING_CHUNK_SIZE),ix=_chunkCoord(cameraPos.x),iz=_chunkCoord(cameraPos.z);for(let x=ix-cr;x<=ix+cr;x++)for(let z=iz-cr;z<=iz+cr;z++){const a=buildingRender.lodCells.get(_lodKey(x,z));if(!a)continue;for(const rec of a){if(rec.ruined||rec.panelized)continue;const dx=rec.x-cameraPos.x,dz=rec.z-cameraPos.z,ds=dx*dx+dz*dz;if(ds<reach*reach)near.push([ds,rec]);}}near.sort((a,b)=>a[0]-b[0]);
     let slot=0;for(const [,rec] of near){if(slot>=BUILDING_WINDOW_CAP)break;const floorStep=5,rows=Math.max(1,Math.floor((rec.h-2.5)/floorStep)),frontCols=Math.max(1,Math.floor(rec.w/6)),sideCols=Math.max(1,Math.floor(rec.d/6));const total=rows*2*(frontCols+sideCols),perBuilding=Math.min(BUILDING_WINDOW_CAP-slot,rec.h>65?176:72),stride=Math.max(1,Math.ceil(total/perBuilding));let k=0;for(let row=0;row<rows&&slot<BUILDING_WINDOW_CAP;row++)for(let side=0;side<4&&slot<BUILDING_WINDOW_CAP;side++){const across=(side<2?frontCols:sideCols);for(let col=0;col<across&&slot<BUILDING_WINDOW_CAP;col++,k++){if(k%stride)continue;const lateral=(col-(across-1)*.5)*6;let lx,lz,ww,dd;if(side===0){lx=lateral;lz=rec.d*.5+.07;ww=1.35;dd=.09;}else if(side===1){lx=lateral;lz=-rec.d*.5-.07;ww=1.35;dd=.09;}else if(side===2){lx=rec.w*.5+.07;lz=lateral;ww=.09;dd=1.35;}else{lx=-rec.w*.5-.07;lz=lateral;ww=.09;dd=1.35;}const c=Math.cos(rec.rot||0),s=Math.sin(rec.rot||0);buildingRender.windowOwners[slot]=rec;_windowMatrix(slot++,rec.x+lx*c+lz*s,rec.groundY+2.6+row*floorStep,rec.z-lx*s+lz*c,ww,1.65,dd,rec.rot||0);}}}
     for(let i=slot;i<BUILDING_WINDOW_CAP;i++){buildingRender.windowOwners[i]=null;buildingRender.windowMesh.setMatrixAt(i,_bHidden);}buildingRender.windowMesh.instanceMatrix.needsUpdate=true;
 }
@@ -1843,18 +1899,110 @@ function _removeColliderBox(box){if(!box)return;colliderGrid.removeBox(box);cons
 function _makeCellProxy(rec,cell){const p=new THREE.Mesh(BUILDING_PROXY_GEO,buildingMats.concrete);p.visible=false;p.position.set(cell.x,cell.y,cell.z);p.rotation.y=rec.rot||0;p.scale.set(cell.w,cell.h,cell.d);p.updateMatrixWorld(true);p.userData={buildingRec:rec,cell,buildingCellProxy:true};cell.proxy=p;rec.cellProxies.push(p);}
 function _removeCellProxy(cell){if(cell&&cell.proxy){cell.proxy.userData={};cell.proxy=null;}}
 function _addCellCollider(rec,cell){const b=_worldBox(cell.x,cell.y,cell.z,cell.w,cell.h,cell.d,rec.rot||0);b.userData={buildingRec:rec,cell};colliders.push(b);colliderGrid.insertBox(b);cell.box=b;}
-function _clearPanelizedBuilding(rec){for(const cell of rec.cells||[]){if(cell.box)_removeColliderBox(cell.box);_removeCellProxy(cell);if(cell.slot!==undefined){buildingRender.ruinMesh.setMatrixAt(cell.slot,_bHidden);buildingRender.ruinFree.push(cell.slot);}}rec.cells=[];rec.panels=[];rec.ruined=true;buildingRender.ruinMesh.instanceMatrix.needsUpdate=true;}
+function _clearPanelizedBuilding(rec){
+    for(const cell of rec.cells||[]){
+        if(cell.box)_removeColliderBox(cell.box);
+        _removeCellProxy(cell);
+        if(cell.slot!==undefined){buildingRender.ruinMesh.setMatrixAt(cell.slot,_bHidden);buildingRender.ruinFree.push(cell.slot);}
+        if(cell.charSlot!==undefined&&cell.charSlot>=0){buildingRender.charMesh.setMatrixAt(cell.charSlot,_bHidden);buildingRender.charFree.push(cell.charSlot);}
+    }
+    rec.cells=[];rec.panels=[];rec.ruined=true;
+    buildingRender.ruinMesh.instanceMatrix.needsUpdate=true;
+    if(buildingRender.charMesh)buildingRender.charMesh.instanceMatrix.needsUpdate=true;
+}
+// Material a structure is built from — drives the 3D fracture debris it throws.
+function _buildingDebrisKinds(rec){
+    if(rec.zone==='house')return ['wood','brick'];
+    if(rec.zone==='downtown')return rec.matKind==='glass'?['glass','metal','stone']:['stone','glass','metal'];
+    if(rec.zone==='medium')return ['stone','glass','metal'];
+    if(rec.commercialType==='gas')return ['metal','glass'];
+    if(rec.commercialType==='hotel'||rec.commercialType==='apartment')return ['stone','brick','glass'];
+    return ['brick','metal','glass'];
+}
+// Perimeter-only panelisation: four walls split into panels, corner support
+// beams per level, one roof slab. No interior walls exist.
 function panelizeBuilding(rec){
-    if(!rec||rec.panelized)return;if(!buildingRender.finalized)finalizeBuildingInstances();rec.panelized=true;rec.cells=[];rec.cellProxies=[];_hideBuildingWindows(rec);_removeColliderBox(rec.box);rec.box=null;rec.originalMesh=null;for(const p of rec.parts)_hidePart(p);
-    const big=rec.h>70||rec.w>34||rec.d>34;const cols=rec.zone==='house'?3:(big?5:4),rows=rec.zone==='house'?3:(big?4:4),levels=Math.max(1,Math.min(big?6:3,Math.ceil(rec.h/(big?34:42)))),cw=rec.w/cols,cd=rec.d/rows,ch=rec.h/levels,c=Math.cos(rec.rot||0),s=Math.sin(rec.rot||0);let exhausted=false;
-    for(let iy=0;iy<levels&&!exhausted;iy++)for(let ix=0;ix<cols&&!exhausted;ix++)for(let iz=0;iz<rows;iz++){const slot=buildingRender.ruinFree.pop();if(slot===undefined){exhausted=true;break;}const lx=-rec.w*.5+cw*(ix+.5),lz=-rec.d*.5+cd*(iz+.5),cell={x:rec.x+lx*c+lz*s,y:rec.groundY+ch*(iy+.5),z:rec.z-lx*s+lz*c,w:cw*.94,h:ch*.96,d:cd*.94,slot,alive:true,color:rec.color,bigPanel:big};rec.cells.push(cell);rec.panels.push(cell);_bDummy.position.set(cell.x,cell.y,cell.z);_bDummy.scale.set(cell.w,cell.h,cell.d);_bDummy.rotation.set(0,rec.rot||0,0);_bDummy.updateMatrix();buildingRender.ruinMesh.setMatrixAt(slot,_bDummy.matrix);_addCellCollider(rec,cell);_makeCellProxy(rec,cell);}
-    buildingRender.ruinMesh.instanceMatrix.needsUpdate=true;if(exhausted)_clearPanelizedBuilding(rec);
+    if(!rec||rec.panelized)return;if(!buildingRender.finalized)finalizeBuildingInstances();
+    rec.panelized=true;rec.cells=[];rec.cellProxies=[];
+    _hideBuildingWindows(rec);_removeColliderBox(rec.box);rec.box=null;rec.originalMesh=null;
+    for(const p of rec.parts)_hidePart(p);
+    const house=rec.zone==='house';
+    const c=Math.cos(rec.rot||0),sn=Math.sin(rec.rot||0);
+    const levels=Math.max(1,Math.min(house?3:6,Math.ceil(rec.h/(house?3.1:rec.h>75?40:30))));
+    const ch=rec.h/levels, t=house?.42:.62;
+    const segLen=house?3.6:5.4;
+    const kinds=_buildingDebrisKinds(rec);
+    let exhausted=false;
+    function addCell(localX,localZ,w,d,opts={}){
+        if(exhausted)return null;
+        const slot=buildingRender.ruinFree.pop();
+        if(slot===undefined){exhausted=true;return null;}
+        const wx=rec.x+localX*c+localZ*sn, wz=rec.z-localX*sn+localZ*c;
+        const cell={x:wx,y:opts.y,z:wz,w,h:opts.h||ch*.94,d,slot,charSlot:-1,alive:true,charred:false,
+            color:opts.color!==undefined?opts.color:rec.color,bigPanel:!house,
+            beam:!!opts.beam,roof:!!opts.roof,level:opts.level||0,wallSide:opts.wallSide??-1,seg:opts.seg||0,segLast:!!opts.segLast,
+            corner:opts.corner??-1,kind:opts.beam?'stone':kinds[0],kinds};
+        rec.cells.push(cell);rec.panels.push(cell);
+        _bDummy.position.set(cell.x,cell.y,cell.z);_bDummy.scale.set(cell.w,cell.h,cell.d);_bDummy.rotation.set(0,rec.rot||0,0);_bDummy.updateMatrix();
+        buildingRender.ruinMesh.setMatrixAt(slot,_bDummy.matrix);
+        _addCellCollider(rec,cell);_makeCellProxy(rec,cell);
+        return cell;
+    }
+    for(let lv=0;lv<levels&&!exhausted;lv++){
+        const cy=rec.groundY+ch*(lv+.5);
+        const nX=Math.max(1,Math.round(rec.w/segLen)), segW=rec.w/nX;
+        const nZ=Math.max(1,Math.round(rec.d/segLen)), segD=rec.d/nZ;
+        for(let k=0;k<nX;k++){const lx=-rec.w*.5+segW*(k+.5);
+            addCell(lx, rec.d*.5, segW*.96, t, {y:cy,level:lv,wallSide:0,seg:k,segLast:k===nX-1});
+            addCell(lx,-rec.d*.5, segW*.96, t, {y:cy,level:lv,wallSide:1,seg:k,segLast:k===nX-1});}
+        for(let k=0;k<nZ;k++){const lz=-rec.d*.5+segD*(k+.5);
+            addCell( rec.w*.5,lz, t, segD*.96,{y:cy,level:lv,wallSide:2,seg:k,segLast:k===nZ-1});
+            addCell(-rec.w*.5,lz, t, segD*.96,{y:cy,level:lv,wallSide:3,seg:k,segLast:k===nZ-1});}
+        const beam=house?.5:1.0;
+        addCell(-rec.w*.5,-rec.d*.5,beam,beam,{y:cy,level:lv,beam:true,corner:0});
+        addCell( rec.w*.5,-rec.d*.5,beam,beam,{y:cy,level:lv,beam:true,corner:1});
+        addCell( rec.w*.5, rec.d*.5,beam,beam,{y:cy,level:lv,beam:true,corner:2});
+        addCell(-rec.w*.5, rec.d*.5,beam,beam,{y:cy,level:lv,beam:true,corner:3});
+    }
+    if(!exhausted)addCell(0,0,rec.w*.98,rec.d*.98,{y:rec.groundY+rec.h+.25,h:.5,level:levels,roof:true});
+    buildingRender.ruinMesh.instanceMatrix.needsUpdate=true;
+    if(exhausted)_clearPanelizedBuilding(rec);
+}
+function _cellMatrixToMesh(mesh,slot,cell,rot){_bDummy.position.set(cell.x,cell.y,cell.z);_bDummy.scale.set(cell.w,cell.h,cell.d);_bDummy.rotation.set(0,rot||0,0);_bDummy.updateMatrix();mesh.setMatrixAt(slot,_bDummy.matrix);}
+// A fractured wall panel remains standing but carbonises and smoulders.
+function charCell(cell,rec){
+    if(cell.charred||cell.roof)return false;
+    const cs=buildingRender.charFree.pop(); if(cs===undefined)return false;
+    cell.charSlot=cs;cell.charred=true;
+    _cellMatrixToMesh(buildingRender.charMesh,cs,cell,rec.rot);
+    buildingRender.ruinMesh.setMatrixAt(cell.slot,_bHidden);buildingRender.ruinFree.push(cell.slot);
+    buildingRender.charMesh.instanceMatrix.needsUpdate=true;
+    buildingRender.ruinMesh.instanceMatrix.needsUpdate=true;
+    if(realismFX&&Math.random()<.6){
+        realismFX.spawnSmoke({x:cell.x+(Math.random()-.5)*Math.max(1,cell.w),y:cell.y+cell.h*.35,z:cell.z+(Math.random()-.5)*Math.max(1,cell.d),
+            r:.8+Math.random()*1.2,maxR:4+Math.random()*4,vr:.5,life:9+Math.random()*15,alpha:.3,hot:.3,buoy:.45,hotColor:0x19130e,col:0x332f2a});
+    }
+    return true;
+}
+function destroyCell(cell,rec,hitPos,radius,force,heavy){
+    cell.alive=false;
+    if(cell.charSlot>=0){buildingRender.charMesh.setMatrixAt(cell.charSlot,_bHidden);buildingRender.charFree.push(cell.charSlot);cell.charSlot=-1;}
+    else{buildingRender.ruinMesh.setMatrixAt(cell.slot,_bHidden);buildingRender.ruinFree.push(cell.slot);}
+    if(cell.box){_removeColliderBox(cell.box);cell.box=null;}
+    _removeCellProxy(cell);
+    ejectPanel(cell,hitPos,radius,heavy?6+force*12:12+force*17,heavy);
+    if(realismFX){
+        const kinds=cell.beam?['stone','metal']:cell.roof?['char','wood']:cell.kinds||_buildingDebrisKinds(rec);
+        const n=(cell.beam?7:cell.roof?9:4+((Math.random()*3)|0))*(heavy?1.4:1);
+        realismFX.fracture({x:cell.x,y:cell.y,z:cell.z},hitPos,Math.round(n),kinds,heavy?17:10+force*6,(rec.zone==='house'?.75:1));
+        if(Math.random()<.6)realismFX.spawnSmoke({x:cell.x,y:cell.y,z:cell.z,r:1.2+Math.random()*1.5,maxR:7,vr:1.2,life:5+Math.random()*5,alpha:.5,hot:.4,buoy:.6,hotColor:0x2b2622,col:0x6a625a});
+    }
 }
 function _fallbackRadial(x,z,slot){const h=Math.sin((x*12.9898+z*78.233+(slot+1)*37.719))*43758.5453,a=(h-Math.floor(h))*Math.PI*2;return [Math.cos(a),Math.sin(a)];}
-function ejectPanel(panel,blastPos,blastRadius,blastPower){
+function ejectPanel(panel,blastPos,blastRadius,blastPower,heavy=false){
     if(!panel)return;
-    const bigPanel=!!panel.bigPanel;
-    const fragments=bigPanel?(3+Math.floor(Math.random()*3)):(2+Math.floor(Math.random()*3));
+    const bigPanel=!!panel.bigPanel||heavy;
+    const fragments=heavy?(2+((Math.random()*2)|0)):(bigPanel?(3+((Math.random()*3)|0)):(2+((Math.random()*3)|0)));
     const sourceW=panel.w||1,sourceH=panel.h||1,sourceD=panel.d||.35;
     const baseX=panel.x,baseY=panel.y,baseZ=panel.z;
     for(let frag=0;frag<fragments;frag++){
@@ -1869,21 +2017,22 @@ function ejectPanel(panel,blastPos,blastRadius,blastPower){
         let dx=x-blastPos.x,dz=z-blastPos.z,len=Math.hypot(dx,dz);
         if(len<.12){[dx,dz]=_fallbackRadial(x,z,slot);len=1;}
         const tangentX=-dz/len,tangentZ=dx/len;
-        const speed=Math.max(10,blastPower*(bigPanel?(0.95+Math.random()*0.75):(1.10+Math.random()*1.05)));
-        const spread=(Math.random()-.5)*speed*(bigPanel?.22:.34);
-        const scale=(bigPanel?.22:.20)+Math.random()*(bigPanel?.20:.24);
-        const downwardBias=bigPanel?(.02+Math.random()*.10):(.18+Math.random()*.20);
-        const panelColor=panel.color!==undefined?panel.color:0x9a9a9a;
+        const speed=heavy?Math.max(6,blastPower*(.35+Math.random()*.35)):Math.max(10,blastPower*(bigPanel?(0.95+Math.random()*0.75):(1.10+Math.random()*1.05)));
+        const spread=(Math.random()-.5)*speed*(heavy?.1:bigPanel?.22:.34);
+        const scale=heavy?.34+Math.random()*.26:(bigPanel?.22:.20)+Math.random()*(bigPanel?.20:.24);
+        // Collapsing upper slabs peel outward but mostly fall; blast debris flies out and up.
+        const vy=heavy?-speed*(.08+Math.random()*.22):speed*(bigPanel?(.02+Math.random()*.10):(.18+Math.random()*.20));
+        const panelColor=heavy?0x241d18:(panel.color!==undefined?panel.color:0x9a9a9a);
         const p={slot,x,y,z,
-            w:Math.max(.35,Math.min(sourceW*scale,4.2)),
-            h:Math.max(.30,Math.min(sourceH*scale,3.4)),
-            d:Math.max(.08,Math.min(sourceD*Math.max(.18,scale*.55),.42)),
+            w:Math.max(.35,Math.min(sourceW*scale,5.2)),
+            h:Math.max(.30,Math.min(sourceH*scale,heavy?4.6:3.4)),
+            d:Math.max(.08,Math.min(sourceD*Math.max(.18,scale*.55),.5)),
             color:panelColor,
             vx:dx/len*speed+tangentX*spread,
-            vy:speed*downwardBias,
+            vy,
             vz:dz/len*speed+tangentZ*spread,
-            life:32+Math.random()*30,rx:(Math.random()-.5)*.8,ry:Math.random()*Math.PI*2,rz:(Math.random()-.5)*.5,
-            fallSpin:(Math.random()-.5)*(bigPanel?6:10),landed:false};
+            life:heavy?50+Math.random()*30:32+Math.random()*30,rx:(Math.random()-.5)*.8,ry:Math.random()*Math.PI*2,rz:(Math.random()-.5)*.5,
+            fallSpin:(Math.random()-.5)*(heavy?3:bigPanel?6:10),landed:false};
         debrisPanels.push(p);buildingRender.debrisBySlot[slot]=p;
     }
 }
@@ -1911,13 +2060,70 @@ function updateDebrisPanels(dt){
             p.y=gy+Math.max(.08,Math.min(p.h,p.w)*.06);p.vx*=Math.pow(.08,dt);p.vz*=Math.pow(.08,dt);p.ry+=dt*.25;
         }
         _bDummy.position.set(p.x,p.y,p.z);_bDummy.rotation.set(p.rx,p.ry,p.rz);_bDummy.scale.set(p.w,p.h,1);_bDummy.updateMatrix();buildingRender.debrisMesh.setMatrixAt(p.slot,_bDummy.matrix);if(buildingRender.debrisMesh.setColorAt)buildingRender.debrisMesh.setColorAt(p.slot,new THREE.Color(p.color));changed=true;}
-    let shardChanged=false;for(let i=buildingRender.windowShards.length-1;i>=0;i--){const p=buildingRender.windowShards[i];p.life-=dt;if(p.life<=0){_hideWindowShard(p);buildingRender.windowShards.splice(i,1);shardChanged=true;continue;}p.vy-=DEBRIS_GRAVITY*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.z+=p.vz*dt;p.ry+=p.spin*dt;const gy=terrainHeightAt(p.x,p.z);if(p.y<gy+.08){p.y=gy+.08;p.vy*=-.28;p.vx*=.55;p.vz*=.55;}_bDummy.position.set(p.x,p.y,p.z);_bDummy.rotation.set(p.rx,p.ry,p.rz+p.rot);_bDummy.scale.set(p.w,p.h,1);_bDummy.updateMatrix();buildingRender.windowShardMesh.setMatrixAt(p.slot,_bDummy.matrix);shardChanged=true;}
+    let shardChanged=false;for(let i=buildingRender.windowShards.length-1;i>=0;i--){const p=buildingRender.windowShards[i];p.life-=dt;if(p.life<=0){_hideWindowShard(p);buildingRender.windowShards.splice(i,1);shardChanged=true;continue;}p.vy-=DEBRIS_GRAVITY*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.z+=p.vz*dt;p.ry+=p.spin*dt;const gy=terrainHeightAt(p.x,p.z);if(p.y<gy+.08){p.y=gy+.08;p.vy=-.28;p.vx*=.55;p.vz*=.55;}_bDummy.position.set(p.x,p.y,p.z);_bDummy.rotation.set(p.rx,p.ry,p.rz+p.rot);_bDummy.scale.set(p.w,p.h,1);_bDummy.updateMatrix();buildingRender.windowShardMesh.setMatrixAt(p.slot,_bDummy.matrix);shardChanged=true;}
     if(changed){buildingRender.debrisMesh.instanceMatrix.needsUpdate=true;if(buildingRender.debrisMesh.instanceColor)buildingRender.debrisMesh.instanceColor.needsUpdate=true;}if(shardChanged)buildingRender.windowShardMesh.instanceMatrix.needsUpdate=true;
 }
 function damageBuilding(rec,hitPos,radius,force=1){
-    if(!rec||rec.ruined)return;if(!rec.panelized){panelizeBuilding(rec);}if(rec.ruined)return;const r=Math.max(2,radius*(rec.zone==='house'?1.15:1.65));let removed=0;
-    for(const cell of rec.cells){if(!cell.alive)continue;const dist=cell.box.distanceToPoint(hitPos);if(dist>r)continue;const chance=THREE.MathUtils.clamp(.22+(1-dist/r)*.7+force*.12-rec.resistance*.25,.08,.98);if(Math.random()>chance)continue;cell.alive=false;buildingRender.ruinMesh.setMatrixAt(cell.slot,_bHidden);buildingRender.ruinFree.push(cell.slot);_removeColliderBox(cell.box);cell.box=null;_removeCellProxy(cell);ejectPanel(cell,hitPos,radius,12+force*17);removed++;}
-    if(removed){buildingRender.ruinMesh.instanceMatrix.needsUpdate=true;rec.damage+=removed*2;playSound('crash');}if(!rec.cells.some(c=>c.alive)){rec.ruined=true;rec.cellProxies.length=0;}
+    if(!rec||rec.ruined)return;if(!rec.panelized){panelizeBuilding(rec);}if(rec.ruined)return;
+    const r=Math.max(2,radius*(rec.zone==='house'?1.15:1.65));let removed=0;const beamsLost=[];
+    for(const cell of rec.cells){
+        if(!cell.alive)continue;
+        const dist=cell.box?cell.box.distanceToPoint(hitPos):Math.hypot(cell.x-hitPos.x,(cell.y-hitPos.y)*.4,cell.z-hitPos.z);
+        if(dist>r)continue;
+        const prox=1-dist/r;
+        if(cell.beam){
+            // Support beams survive small arms; only blast overpressure (r >= 16 m)
+            // reaching the inner zone can shear them and trigger a collapse.
+            if(radius<16){ if(!cell.charred&&Math.random()<prox*.3)charCell(cell,rec); continue; }
+            const sev=prox+force*.10-rec.resistance*.30;
+            if(sev>.42&&Math.random()<THREE.MathUtils.clamp(sev,0,1)*.92){destroyCell(cell,rec,hitPos,radius,force,false);beamsLost.push(cell);removed++;}
+            else if(!cell.charred&&Math.random()<prox*.55)charCell(cell,rec);
+            continue;
+        }
+        if(cell.roof){
+            const sev=prox*.7+force*.08+(cell.charred?.2:0);
+            if(!cell.charred&&Math.random()<sev*.7){charCell(cell,rec);continue;}
+            if(Math.random()<THREE.MathUtils.clamp(sev+.15,.05,.98)){destroyCell(cell,rec,hitPos,radius,force,false);removed++;}
+            continue;
+        }
+        const sev=prox*.85+force*.10-rec.resistance*.22+(cell.charred?.24:0);
+        if(!cell.charred){
+            // First hit fractures and chars but usually leaves the wall standing.
+            const pc=THREE.MathUtils.clamp(sev,.05,.95);
+            if(Math.random()<pc*.82){
+                charCell(cell,rec);
+                if(realismFX&&Math.random()<.5)realismFX.fracture({x:cell.x,y:cell.y+cell.h*.2,z:cell.z},hitPos,2+((Math.random()*3)|0),cell.kinds,7+force*4,.7);
+                continue;
+            }
+        }
+        // A second strong hit, or a direct hit, destroys the panel outright.
+        const dc=THREE.MathUtils.clamp((cell.charred?.35:.12)+sev*.78,.05,.985);
+        if(Math.random()<dc){destroyCell(cell,rec,hitPos,radius,force,false);removed++;}
+    }
+    // Procedural collapse: a lost corner support beam peels the adjacent upper
+    // walls down; two beams on one level brings down the whole upper structure.
+    if(beamsLost.length){
+        const byLevel={};
+        for(const b of beamsLost)byLevel[b.level]=(byLevel[b.level]||0)+1;
+        for(const b of beamsLost){
+            const broad=byLevel[b.level]>=2;
+            for(const cell of rec.cells){
+                if(!cell.alive||cell.beam)continue;
+                if(cell.level<b.level)continue;
+                let adjacent=!!cell.roof;
+                if(!adjacent&&!broad){
+                    const side=cell.wallSide,seg=cell.seg,last=cell.segLast;
+                    if(b.corner===0)adjacent=(side===1&&seg===0)||(side===3&&seg===0);
+                    else if(b.corner===1)adjacent=(side===1&&last)||(side===2&&seg===0);
+                    else if(b.corner===2)adjacent=(side===0&&last)||(side===2&&last);
+                    else adjacent=(side===0&&seg===0)||(side===3&&last);
+                }
+                if(adjacent&&Math.random()<(broad?.95:.8)){destroyCell(cell,rec,hitPos,radius,force,true);removed++;}
+            }
+        }
+    }
+    if(removed){buildingRender.ruinMesh.instanceMatrix.needsUpdate=true;buildingRender.charMesh.instanceMatrix.needsUpdate=true;rec.damage+=removed*2;playSound('crash');}
+    if(!rec.cells.some(c=>c.alive)){rec.ruined=true;rec.cellProxies.length=0;}
 }
 function damageBuildingsInRadius(pos,radius){
     const search=radius+110;colliderGrid.query(pos.x-search,pos.z-search,pos.x+search,pos.z+search,_nearBoxes);const seen=new Set();for(const box of _nearBoxes){const rec=box.userData&&box.userData.buildingRec;if(!rec||seen.has(rec))continue;const dist=box.distanceToPoint(pos);if(dist>radius)continue;seen.add(rec);damageQueue.push({rec,pos:pos.clone?pos.clone():new THREE.Vector3(pos.x,pos.y,pos.z),radius:radius*.85,force:rec.zone==='house'?1.3:1});}
@@ -2134,24 +2340,72 @@ function createSmallTown(cx, cz){
 
 const forestTrees=[];
 const forestClusters=[];
-const forestTrunkMat=makeEfficientMaterial({color:0x5b4634,roughness:.95,metalness:0});
-const forestLeafMat=makeEfficientMaterial({color:0x3f7b3b,roughness:.98,metalness:0,flatShading:true,envMapIntensity:.18});
-const TREE_BASE_GEO=(()=>{
+const TREE_SPECIES_COUNT = VERY_LOW_MEM ? 2 : 4;
+function _treeMatsPair(trunkColor,leafColor){
+    return { trunk:makeEfficientMaterial({color:trunkColor,roughness:.95,metalness:0}),
+             leaf:makeEfficientMaterial({color:leafColor,roughness:.98,metalness:0,flatShading:true,envMapIntensity:.18}) };
+}
+// Oak, pine, birch, maple — distinct silhouettes, bark and crown colour.
+const TREE_SPECIES_MATS=[
+    _treeMatsPair(0x5b4634,0x3f7b3b),
+    _treeMatsPair(0x4a3728,0x2f5e36),
+    _treeMatsPair(0xc7bfae,0x6fa050),
+    _treeMatsPair(0x6b5138,0x5c8a3c)
+].slice(0,TREE_SPECIES_COUNT);
+const forestTrunkMat=TREE_SPECIES_MATS[0].trunk;
+const forestLeafMat=TREE_SPECIES_MATS[0].leaf;
+function _buildOakGeo(){
     const wood=[new THREE.CylinderGeometry(.22,.5,6,7).translate(0,3,0).toNonIndexed()],leaves=[];
     for(let i=0;i<4;i++){const a=i*Math.PI*.5+.4;wood.push(new THREE.CylinderGeometry(.07,.22,3.5,5).rotateZ(-.65).rotateY(a).translate(Math.cos(a)*.9,5.1,-Math.sin(a)*.9).toNonIndexed());}
     const crowns=[[0,8.1,0,2.6],[1.9,6.6,0,2.1],[-1.7,6.9,.4,2.3],[.2,6.7,1.9,2.2],[-.3,7,-1.8,2]];
     for(const [x,y,z,s] of crowns)leaves.push(new THREE.IcosahedronGeometry(1,0).scale(s,s*.95,s*.9).translate(x,y,z));
     const trunk=mergeGeometries(wood),canopy=mergeGeometries(leaves),merged=mergeGeometries([trunk,canopy],true);
     for(const g of [...wood,...leaves,trunk,canopy])g.dispose();return merged;
-})();
-const TREE_FAR_GEO=(()=>{const trunk=new THREE.CylinderGeometry(.2,.45,5,4).translate(0,2.5,0).toNonIndexed(),crown=new THREE.IcosahedronGeometry(1,0).scale(3.25,3.3,3).translate(0,7.1,0),g=mergeGeometries([trunk,crown],true);trunk.dispose();crown.dispose();return g;})();
+}
+function _buildPineGeo(){
+    const trunk=new THREE.CylinderGeometry(.18,.42,7.5,6).translate(0,3.75,0).toNonIndexed(),leaves=[];
+    const cones=[[2.7,4.6,5.4],[2.1,3.8,7.6],[1.5,3.1,9.5],[1.0,2.4,11.0]];
+    for(const [r,h,y] of cones)leaves.push(new THREE.ConeGeometry(r,h,7).translate(0,y,0).toNonIndexed());
+    const canopy=mergeGeometries(leaves),g=mergeGeometries([trunk,canopy],true);trunk.dispose();canopy.dispose();for(const l of leaves)l.dispose();return g;
+}
+function _buildBirchGeo(){
+    const wood=[new THREE.CylinderGeometry(.12,.26,9,6).translate(0,4.5,0).toNonIndexed()],leaves=[];
+    for(let i=0;i<3;i++){const a=i*2.1+0.3;wood.push(new THREE.CylinderGeometry(.05,.13,3,5).rotateZ(-.5).rotateY(a).translate(Math.cos(a)*.5,7.6,-Math.sin(a)*.5).toNonIndexed());}
+    const crowns=[[0,9.8,.2,1.7],[1.1,9.0,.1,1.35],[-.9,9.2,-.3,1.4],[.3,10.8,0,1.15]];
+    for(const [x,y,z,s] of crowns)leaves.push(new THREE.IcosahedronGeometry(1,1).scale(s,s*1.05,s).translate(x,y,z));
+    const trunk=mergeGeometries(wood),canopy=mergeGeometries(leaves),g=mergeGeometries([trunk,canopy],true);for(const m of [...wood,...leaves,trunk,canopy])m.dispose();return g;
+}
+function _buildMapleGeo(){
+    const wood=[new THREE.CylinderGeometry(.26,.55,6.5,7).translate(0,3.25,0).toNonIndexed()],leaves=[];
+    for(let i=0;i<4;i++){const a=i*Math.PI*.5+.9;wood.push(new THREE.CylinderGeometry(.08,.24,3.2,5).rotateZ(-.75).rotateY(a).translate(Math.cos(a)*1.0,4.8,-Math.sin(a)*1.0).toNonIndexed());}
+    const crowns=[[0,7.6,0,2.9],[2.0,7.0,.3,2.3],[-1.8,7.1,-.4,2.4],[.3,8.9,.2,2.2],[-.2,6.6,1.9,2.1]];
+    for(const [x,y,z,s] of crowns)leaves.push(new THREE.IcosahedronGeometry(1,0).scale(s,s*.9,s).translate(x,y,z));
+    const trunk=mergeGeometries(wood),canopy=mergeGeometries(leaves),g=mergeGeometries([trunk,canopy],true);for(const m of [...wood,...leaves,trunk,canopy])m.dispose();return g;
+}
+const TREE_GEOS=[_buildOakGeo(),_buildPineGeo(),_buildBirchGeo(),_buildMapleGeo()].slice(0,TREE_SPECIES_COUNT);
+const TREE_BASE_GEO=TREE_GEOS[0];
+function _buildOakFarGeo(){const trunk=new THREE.CylinderGeometry(.2,.45,5,4).translate(0,2.5,0).toNonIndexed(),crown=new THREE.IcosahedronGeometry(1,0).scale(3.25,3.3,3).translate(0,7.1,0),g=mergeGeometries([trunk,crown],true);trunk.dispose();crown.dispose();return g;}
+function _buildPineFarGeo(){const trunk=new THREE.CylinderGeometry(.16,.36,6,4).translate(0,3,0).toNonIndexed(),crown=new THREE.ConeGeometry(2.7,8,6).translate(0,7.6,0).toNonIndexed(),g=mergeGeometries([trunk,crown],true);trunk.dispose();crown.dispose();return g;}
+function _buildBirchFarGeo(){const trunk=new THREE.CylinderGeometry(.1,.2,8,4).translate(0,4,0).toNonIndexed(),crown=new THREE.IcosahedronGeometry(1,0).scale(2.1,2.2,2).translate(0,9.4,0),g=mergeGeometries([trunk,crown],true);trunk.dispose();crown.dispose();return g;}
+function _buildMapleFarGeo(){const trunk=new THREE.CylinderGeometry(.2,.42,5.5,4).translate(0,2.8,0).toNonIndexed(),crown=new THREE.IcosahedronGeometry(1,0).scale(3.3,3.1,3).translate(0,6.9,0),g=mergeGeometries([trunk,crown],true);trunk.dispose();crown.dispose();return g;}
+const TREE_FAR_GEOS=[_buildOakFarGeo(),_buildPineFarGeo(),_buildBirchFarGeo(),_buildMapleFarGeo()].slice(0,TREE_SPECIES_COUNT);
+const TREE_FAR_GEO=TREE_FAR_GEOS[0];
 const forestChunks=new Map(),forestHiddenMatrix=new THREE.Matrix4().makeScale(0,0,0),forestLastPosition=new THREE.Vector3(Infinity,Infinity,Infinity);
 let forestRoadStamp=-1,forestRenderDistance=0;
 let treeInstances=null;
-function makeForestTree(x,z,scale=1){
+// Species mix weights by hash; urban streets favour oak/maple.
+function treeSpeciesFor(x,z,urban=false){
+    const v=hash2(Math.floor(x*3.7),Math.floor(z*2.9));
+    if(TREE_SPECIES_COUNT===2)return v<.55?0:1;
+    if(urban)return v<.6?0:3;
+    return v<.34?0:v<.62?1:v<.82?3:2;
+}
+function makeForestTree(x,z,scale=1,urban=false){
     const proxy=new THREE.Group();
     proxy.position.set(x,terrainHeightAt(x,z),z);
-    proxy.userData={tree:true,dead:false,stump:false,health:1,baseScale:scale,instanceId:forestTrees.length,urban:false};
+    const species=treeSpeciesFor(x,z,urban);
+    proxy.userData={tree:true,dead:false,stump:false,health:1,baseScale:scale,instanceId:forestTrees.length,urban:!!urban,species,
+        scaleJitter:.82+hash2(Math.floor(x),Math.floor(z)+999)*.36};
     forestTrees.push(proxy); return proxy;
 }
 function finalizeTreeInstances(){
@@ -2163,18 +2417,28 @@ function finalizeTreeInstances(){
     }
     const q=new THREE.Quaternion(),sc=new THREE.Vector3(),color=new THREE.Color();
     for(const chunk of forestChunks.values()){
-        chunk.near=new THREE.InstancedMesh(TREE_BASE_GEO,[forestTrunkMat,forestLeafMat],chunk.trees.length);chunk.far=new THREE.InstancedMesh(TREE_FAR_GEO,[forestTrunkMat,forestLeafMat],chunk.trees.length);
-        for(const mesh of [chunk.near,chunk.far]){mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.visible=false;treeInstances.add(mesh);}
-        for(const t of chunk.trees){const s=t.userData.baseScale,v=hash2(Math.floor(t.position.x),Math.floor(t.position.z));q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP,v*Math.PI*2);sc.setScalar(s);
-            t.userData.baseMatrix=new THREE.Matrix4().compose(t.position,q,sc);t.userData.visible=!t.userData.dead;color.setRGB(.82+v*.18,.86+v*.14,.76+v*.2);
-            for(const mesh of [chunk.near,chunk.far]){mesh.setMatrixAt(t.userData.chunkIndex,t.userData.dead?forestHiddenMatrix:t.userData.baseMatrix);mesh.setColorAt(t.userData.chunkIndex,color);}
+        chunk.near=[];chunk.far=[];chunk.counters=new Array(TREE_SPECIES_COUNT).fill(0);
+        for(let sp=0;sp<TREE_SPECIES_COUNT;sp++){
+            const nm=new THREE.InstancedMesh(TREE_GEOS[sp],[TREE_SPECIES_MATS[sp].trunk,TREE_SPECIES_MATS[sp].leaf],chunk.trees.length);
+            const fm=new THREE.InstancedMesh(TREE_FAR_GEOS[sp],[TREE_SPECIES_MATS[sp].trunk,TREE_SPECIES_MATS[sp].leaf],chunk.trees.length);
+            nm.instanceMatrix.setUsage(THREE.DynamicDrawUsage);fm.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            nm.visible=false;fm.visible=false;treeInstances.add(nm);treeInstances.add(fm);chunk.near.push(nm);chunk.far.push(fm);
+            for(let i=0;i<chunk.trees.length;i++){nm.setMatrixAt(i,forestHiddenMatrix);fm.setMatrixAt(i,forestHiddenMatrix);}
         }
-        for(const mesh of [chunk.near,chunk.far]){mesh.instanceMatrix.needsUpdate=true;mesh.instanceColor.needsUpdate=true;mesh.computeBoundingSphere();}
+        for(const t of chunk.trees){const u=t.userData,s=u.baseScale,v=hash2(Math.floor(t.position.x),Math.floor(t.position.z));
+            q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP,v*Math.PI*2);sc.setScalar(s);
+            u.baseMatrix=new THREE.Matrix4().compose(t.position,q,sc);u.visible=!u.dead;
+            u.speciesIndex=chunk.counters[u.species]++;
+            color.setRGB(.82+v*.18,.86+v*.14,.76+v*.2);
+            for(const mesh of [chunk.near[u.species],chunk.far[u.species]]){mesh.setMatrixAt(u.speciesIndex,u.dead?forestHiddenMatrix:u.baseMatrix);mesh.setColorAt(u.speciesIndex,color);}
+        }
+        for(let sp=0;sp<TREE_SPECIES_COUNT;sp++)for(const mesh of [chunk.near[sp],chunk.far[sp]]){mesh.instanceMatrix.needsUpdate=true;if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;mesh.computeBoundingSphere();}
     }
+    if(realismFX)realismFX.initFallen(TREE_GEOS,TREE_SPECIES_MATS);
 }
 function setTreeInstanceVisible(t,on){
-    const chunk=forestChunks.get(t.userData.chunkKey);if(!chunk)return;on=on&&!t.userData.dead;
-    for(const mesh of [chunk.near,chunk.far]){mesh.setMatrixAt(t.userData.chunkIndex,on?t.userData.baseMatrix:forestHiddenMatrix);mesh.instanceMatrix.needsUpdate=true;}t.userData.visible=on;
+    const chunk=forestChunks.get(t.userData.chunkKey);if(!chunk)return;on=on&&!t.userData.dead;const sp=t.userData.species,idx=t.userData.speciesIndex;
+    for(const mesh of [chunk.near[sp],chunk.far[sp]]){mesh.setMatrixAt(idx,on?t.userData.baseMatrix:forestHiddenMatrix);mesh.instanceMatrix.needsUpdate=true;}t.userData.visible=on;
 }
 function natureSegmentDistance(x,z,ax,az,bx,bz){const dx=bx-ax,dz=bz-az,t=Math.max(0,Math.min(1,((x-ax)*dx+(z-az)*dz)/(dx*dx+dz*dz||1)));return Math.hypot(x-ax-t*dx,z-az-t*dz);}
 
@@ -2208,38 +2472,64 @@ function updateNatureGrass(p){
     }
     if(changed)grass.mesh.instanceMatrix.needsUpdate=true;
 }
+// Organic forest: union of a few offset blob circles instead of a placeholder disc.
 function createForestCluster(cx,cz,radius){
-    const group=[];
-    for(let i=0;i<CFG.forestTreesPerCluster;i++){
-        const a=Math.random()*Math.PI*2,r=Math.sqrt(Math.random())*radius;
-        group.push(makeForestTree(cx+Math.cos(a)*r,cz+Math.sin(a)*r,.95+Math.random()*1.0));
+    const blobN=3+((Math.random()*3)|0), blobs=[];
+    for(let i=0;i<blobN;i++){const a=Math.random()*6.283,d=Math.random()*radius*.55;
+        blobs.push({x:cx+Math.cos(a)*d,z:cz+Math.sin(a)*d,r:radius*(.32+Math.random()*.42)});}
+    const seed=Math.random()*1000, group=[];
+    const n=CFG.forestTreesPerCluster;
+    for(let i=0;i<n;i++){
+        const b=blobs[(Math.random()*blobN)|0];
+        const a=Math.random()*6.283, rr=Math.sqrt(Math.random())*b.r;
+        const x=b.x+Math.cos(a)*rr, z=b.z+Math.sin(a)*rr;
+        // Wide size variance: saplings, mature timber and the occasional giant.
+        const scale=(.55+Math.pow(Math.random(),1.6)*1.9)*(i%13===0?1.35:1);
+        group.push(makeForestTree(x,z,scale));
     }
-    forestClusters.push({x:cx,z:cz,r:radius,trees:group});
+    // A few stragglers on the woodland edge for an irregular silhouette.
+    for(let i=0;i<n*.18;i++){const a=Math.random()*6.283,rr=radius*(.85+Math.random()*.35);
+        group.push(makeForestTree(cx+Math.cos(a)*rr,cz+Math.sin(a)*rr,.45+Math.random()*1.1));}
+    forestClusters.push({x:cx,z:cz,r:radius,trees:group,blobs,seed});
 }
 function createForests(){
     for(let i=0;i<CFG.forestClusterCount;i++){
-        const a=Math.random()*Math.PI*2,r=7600+Math.random()*3200;
-        createForestCluster(Math.cos(a)*r,Math.sin(a)*r,170+Math.random()*280);
+        const a=Math.random()*Math.PI*2,r=7000+Math.random()*4200;
+        createForestCluster(Math.cos(a)*r,Math.sin(a)*r,170+Math.random()*300);
     }
 }
-function createStreetTree(x,z,scale=1){const t=makeForestTree(x,z,scale);t.userData.urban=true;return t;}
+function createStreetTree(x,z,scale=1){const t=makeForestTree(x,z,scale,true);t.userData.urban=true;return t;}
 
+// Blast overpressure snaps trunks (stumps) or hurls whole trees over; the
+// shock front reaches outer trees later (arrival delay = distance / wave speed).
 function damageForestsInRadius(pos,radius){
-    const r2=radius*radius;
+    const r2=radius*radius, waveSpeed=Math.max(140,radius*1.15);
     for(const t of forestTrees){
         if(t.userData.dead)continue;
-        const dx=t.position.x-pos.x,dz=t.position.z-pos.z; if(dx*dx+dz*dz>r2)continue;
-        const d=Math.hypot(dx,dz),p=radius<=0?1:1-d/radius; if(p<.28&&Math.random()>.45)continue;
-        t.userData.dead=true; setTreeInstanceVisible(t,false);
-        if(!t.userData.stump){
-            const stump=new THREE.Mesh(new THREE.CylinderGeometry(.18,.25,.75,7),forestTrunkMat); stump.position.set(t.position.x,terrainHeightAt(t.position.x,t.position.z)+.375,t.position.z); stump.castShadow=false; staticMeshes.push(stump);
-            t.userData.stump=stump;
+        const dx=t.position.x-pos.x,dz=t.position.z-pos.z,d2=dx*dx+dz*dz; if(d2>r2)continue;
+        const d=Math.sqrt(d2),over=1-d/radius;
+        const inner=d<radius*.62;
+        if(inner){
+            t.userData.dead=true;setTreeInstanceVisible(t,false);
+            const baseY=terrainHeightAt(t.position.x,t.position.z);
+            const angle=Math.atan2(dz,dx)+(Math.random()-.5)*.35;
+            const delay=Math.min(1.4,d/waveSpeed);
+            if(realismFX){
+                realismFX.knockTree({x:t.position.x,z:t.position.z,baseY,scale:t.userData.baseScale,species:t.userData.species,angle,delay,tipSpeed:.35+over*1.25});
+                realismFX.fracture({x:t.position.x,y:baseY+.5,z:t.position.z},pos,4+((Math.random()*5)|0),['bark','wood','leaf'],9+over*12,Math.max(.5,t.userData.baseScale*.8));
+            }
+        }else{
+            if(Math.random()>.55)continue;
+            t.userData.dead=true;setTreeInstanceVisible(t,false);
+            if(realismFX)realismFX.fracture({x:t.position.x,y:terrainHeightAt(t.position.x,t.position.z)+.5,z:t.position.z},pos,2+((Math.random()*3)|0),['leaf','bark'],8,Math.max(.4,t.userData.baseScale*.6));
+            if(!t.userData.stump){
+                const stump=new THREE.Mesh(new THREE.CylinderGeometry(.18,.25,.75,7),TREE_SPECIES_MATS[t.userData.species].trunk);
+                stump.position.set(t.position.x,terrainHeightAt(t.position.x,t.position.z)+.375,t.position.z);stump.castShadow=false;staticMeshes.push(stump);
+                t.userData.stump=stump;
+            }
         }
     }
 }
-
-
-
 function generateTownCenters(){let made=0,tries=0;while(made<CFG.townCount&&tries++<7000){const x=(Math.random()-.5)*(CFG.worldSize-9000),z=(Math.random()-.5)*(CFG.worldSize-9000);let bad=Math.hypot(x,z)>29000;for(const c of CITY_CENTERS)if(Math.hypot(x-c.x,z-c.z)<CFG.cityRadius+1400)bad=true;if(bad)continue;for(const t of TOWN_CENTERS)if(Math.hypot(x-t.x,z-t.z)<1050){bad=true;break;}if(bad)continue;createTown(x,z,made++);}}
 
 
@@ -2338,8 +2628,23 @@ function applyWalkCycle(ud, dt, speedScale){
 
 // ─── SIDEWALK WAYPOINTS ───
 const sidewalkWaypoints = [];
-function buildSidewalkWaypoints(){sidewalkWaypoints.length=0;for(const city of CITY_CENTERS){for(let x=-CFG.roadZoneRadius;x<=CFG.roadZoneRadius;x+=620)for(let z=-CFG.roadZoneRadius;z<=CFG.roadZoneRadius;z+=620){sidewalkWaypoints.push({x:city.x+x+CFG.roadWidth*.6,z:city.z+z+CFG.roadWidth*.6});sidewalkWaypoints.push({x:city.x+x-CFG.roadWidth*.6,z:city.z+z-CFG.roadWidth*.6});}}for(const t of TOWN_CENTERS)for(let i=0;i<8;i++){const a=i/8*Math.PI*2;sidewalkWaypoints.push({x:t.x+Math.cos(a)*120,z:t.z+Math.sin(a)*120});}for(const e of HIGHWAY_EXITS)sidewalkWaypoints.push({x:e.x,z:e.z});}
+function buildSidewalkWaypoints(){sidewalkWaypoints.length=0;roadPatrolWaypoints.length=0;for(const city of CITY_CENTERS){for(let x=-CFG.roadZoneRadius;x<=CFG.roadZoneRadius;x+=620)for(let z=-CFG.roadZoneRadius;z<=CFG.roadZoneRadius;z+=620){sidewalkWaypoints.push({x:city.x+x+CFG.roadWidth*.6,z:city.z+z+CFG.roadWidth*.6});sidewalkWaypoints.push({x:city.x+x-CFG.roadWidth*.6,z:city.z+z-CFG.roadWidth*.6});}}for(const t of TOWN_CENTERS)for(let i=0;i<8;i++){const a=i/8*Math.PI*2;sidewalkWaypoints.push({x:t.x+Math.cos(a)*120,z:t.z+Math.sin(a)*120});}for(const e of HIGHWAY_EXITS)sidewalkWaypoints.push({x:e.x,z:e.z});
+ // Rural road patrol points along every road segment — enemies and cops walk the roads.
+ for(const seg of surfaceWorld.segments){const steps=Math.max(1,Math.floor(seg.len/650));for(let k=0;k<=steps&&roadPatrolWaypoints.length<1500;k++){const f=k/steps;
+   roadPatrolWaypoints.push({x:seg.ax+(seg.bx-seg.ax)*f+6,z:seg.az+(seg.bz-seg.az)*f+6});}}
+}
 buildSidewalkWaypoints();
+// Patrol target: mostly sidewalks, but a third of routes follow rural roads.
+function pickPatrolTarget(){
+ if(roadPatrolWaypoints.length&&Math.random()<.34){const wp=roadPatrolWaypoints[(Math.random()*roadPatrolWaypoints.length)|0];return{x:wp.x,z:wp.z};}
+ const wp=sidewalkWaypoints[(Math.random()*sidewalkWaypoints.length)|0];return{x:wp.x,z:wp.z};
+}
+// Civilians loiter outside houses and corner stores, not random downtown towers.
+function pickResidentialDestination(){
+ if(buildings.length){for(let i=0;i<14;i++){const b=buildings[(Math.random()*buildings.length)|0];
+  if(b.zone==='house'||b.commercialType==='store'){const a=Math.random()*6.283,r=Math.max(b.w,b.d)*.6+7;return{x:b.x+Math.cos(a)*r,z:b.z+Math.sin(a)*r};}}}
+ return pickBuildingDestination();
+}
 
 const fieldWaypoints = [];
 function buildFieldWaypoints(){
@@ -2387,7 +2692,9 @@ function spawnNPC(isCop = false, isEnemy = false){
     let x = 0, z = 0, tries = 0;
     do {
         if(isEnemy || isCop){
-            const wp = sidewalkWaypoints[Math.floor(Math.random()*sidewalkWaypoints.length)];
+            // A quarter of patrols start out on the rural road network.
+            const pool=(roadPatrolWaypoints.length&&Math.random()<.25)?roadPatrolWaypoints:sidewalkWaypoints;
+            const wp = pool[Math.floor(Math.random()*pool.length)];
             x = wp.x + (Math.random()-0.5)*6;
             z = wp.z + (Math.random()-0.5)*6;
         } else if(Math.random() < 0.7 && sidewalkWaypoints.length){
@@ -2423,11 +2730,10 @@ function spawnNPC(isCop = false, isEnemy = false){
         blocked: false,
     };
     if(!isEnemy && !isCop){
-        const t = pickBuildingDestination();
+        const t = pickResidentialDestination();
         if(t){ grp.userData.target = t; grp.userData.state = 'walk'; }
     } else {
-        const wp = sidewalkWaypoints[grp.userData.patrolIndex];
-        grp.userData.target = { x: wp.x, z: wp.z };
+        grp.userData.target = pickPatrolTarget();
     }
     scene.add(grp); npcs.push(grp);
     return grp;
@@ -2466,6 +2772,43 @@ function spawnCar(){
     grp.position.y=terrainHeightAt(grp.position.x,grp.position.z)+.2;
     grp.userData={type:'car',velocity:0,speed:0,health:80,maxHealth:80,camPos:new THREE.Vector3(0,1.08,.1),steering:0,frontWheels:grp.children.filter(o=>o.userData.frontWheel),ai:{active:true,speed:5+Math.random()*3.5,turnTimer:0},healthBar:null};
     scene.add(grp); cars.push(grp); return grp;
+}
+// ─── DISTANT HIGHWAY TRAFFIC — cars that actually follow road segments ───
+const highwayCars=[];
+function spawnHighwayTraffic(count){
+    const segs=surfaceWorld.segments.filter(s=>s.len>260);
+    if(!segs.length||!carTemplates.size)return;
+    const colors=[...carTemplates.keys()];
+    for(let i=0;i<count;i++){
+        const seg=segs[(Math.random()*segs.length)|0];
+        const tmpl=carTemplates.get(colors[(Math.random()*colors.length)|0])||carTemplates.values().next().value;
+        const grp=tmpl.clone(true);
+        grp.scale.setScalar(.9+Math.random()*.25);
+        const h={grp,seg,f:Math.random(),dir:Math.random()<.5?1:-1,speed:13+Math.random()*14};
+        grp.userData={type:'highwayCar',highway:h};
+        scene.add(grp);highwayCars.push(h);
+    }
+}
+function updateHighwayTraffic(dt){
+    const segs=surfaceWorld.segments;
+    for(const h of highwayCars){
+        let seg=h.seg;
+        h.f+=h.dir*h.speed*dt/seg.len;
+        if(h.f>1||h.f<0){
+            const fromEnd=h.f>1;
+            const px=fromEnd?seg.bx:seg.ax, pz=fromEnd?seg.bz:seg.az;
+            let next=null,best=26;
+            for(let i=0;i<segs.length;i++){const s=segs[i];const ex=fromEnd?Math.hypot(s.ax-px,s.az-pz):Math.hypot(s.bx-px,s.bz-pz);if(ex<best){best=ex;next=s;}}
+            if(next){h.seg=next;h.f=fromEnd?.001:.999;seg=next;}
+            else {h.dir*=-1;h.f=THREE.MathUtils.clamp(h.f,.02,.98);}
+        }
+        const dx=seg.bx-seg.ax,dz=seg.bz-seg.az,l=Math.hypot(dx,dz)||1;
+        const x=seg.ax+dx*h.f,z=seg.az+dz*h.f;
+        const nx=-dz/l*h.dir*4.2,nz=dx/l*h.dir*4.2;
+        h.grp.position.set(x+nx,terrainHeightAt(x,z)+.2,z+nz);
+        h.grp.rotation.y=Math.atan2(-dx*h.dir,-dz*h.dir);
+        h.grp.visible=h.grp.position.distanceToSquared(camera.position)<3800*3800;
+    }
 }
 function spawnMotorbike(x, z){
     const grp = new THREE.Group();
@@ -2655,14 +2998,19 @@ function updateJetFlight(j, dt){
         if(currentVehicle!==j) break;
     }
     j.userData.speed=f.velocity.length();
+    f.vs=THREE.MathUtils.damp(f.vs||0,f.velocity.y,6,dt);
 }
 function updateFlightHUD(j, dt){
     const f=j.userData.flight; f.hudTime-=dt;
     if(f.hudTime>0) return; f.hudTime=.1;
     const hud=document.getElementById('flight-hud'); hud.style.display='block'; hud.classList.toggle('stall',f.stalled);
     const agl=Math.max(0,j.position.y-terrainHeightAt(j.position.x,j.position.z)-.4);
-    document.getElementById('flight-values').textContent=`AIR ${Math.round(j.userData.speed)} m/s   ALT ${Math.round(agl)} m AGL\nTHR ${Math.round(f.throttle*100)}%  ENG ${Math.round(f.engine*100)}%\n${f.onGround?'GROUND / ROTATE AT 60 m/s':f.stalled?'STALL - LOWER NOSE':'AIRBORNE'}${jetBoost?' / BOOST':''}`;
+    const knots=j.userData.speed*1.94384;
+    const hdg=((-f.heading*180/Math.PI)%360+360)%360;
+    document.getElementById('flight-values').textContent=`IAS ${Math.round(knots)} kt   HDG ${String(Math.round(hdg)).padStart(3,'0')}°   ALT ${Math.round(agl)} m AGL\nTHR ${Math.round(f.throttle*100)}%  ENG ${Math.round(f.engine*100)}%  V/S ${f.stalled?'——':(f.vs>=0?'+':'')+Math.round(f.vs)} m/s\n${f.onGround?'GROUND / ROTATE AT 117 kt':f.stalled?'STALL - LOWER NOSE':'AIRBORNE'}${jetBoost?' / BOOST':''}`;
 }
+// Light airframe buffet in a stall for tactile stall warning.
+function stallBuffet(j,dt){const f=j.userData.flight;if(!f)return;if(f.stalled){const k=Math.min(1,dt*60);camera.position.x+=(Math.random()-.5)*.55*k;camera.position.y+=(Math.random()-.5)*.4*k;camera.position.z+=(Math.random()-.5)*.55*k;}}
 function spawnPickup(){
     const wId = Math.floor(Math.random()*4) + 1;
     const wData = WEAPONS[wId];
@@ -3014,6 +3362,14 @@ function createCityStrikePooledEffects(host) {
         if (big && host.applyCameraShake) host.applyCameraShake(Math.min(3.5, 95 / (camera.position.distanceTo(pos) + 12)));
         if (nuke || moab) overlayLife = Math.max(overlayLife, nuke ? 3 : 1.2);
         spawnFlashLight({ x: pos.x, y: pos.y + R * .15, z: pos.z }, nuke ? 0xffffff : 0xffd9a0, nuke ? 3000 : big ? 700 : 320, R * 3, nuke ? .6 : .4);
+        // Thermodynamic fireballs / smoke / 30-ft blast walls are rendered by
+        // createRealismFramework; here we only keep scorch + ground dust rings.
+        if (opts.thermo) {
+            spawnInto(rings, { pos: { x: pos.x, y: groundY + .3, z: pos.z }, size: R * .2, color: 0xd6c8b0, life: 2.2, opacity: .5, growth: R * 3.4, maxScale: R * (nuke ? 4.5 : 3), shape: 'ring' });
+            if (big) spawnInto(rings, { pos: { x: pos.x, y: groundY + .28, z: pos.z }, size: R * .3, color: 0x8a8a8a, life: 3, opacity: .32, growth: R * 3.8, maxScale: R * (nuke ? 5 : 3.4), shape: 'ring', startDelay: .15 });
+            makeScorch({ x: pos.x, y: groundY, z: pos.z }, R, nuke ? 30000 : moab ? 18000 : 12000, nuke ? .68 : .5);
+            return;
+        }
         if (big) addExplosionFrontEffects(pos, R, true, 90);
 
         spawnInto(billboards, { pos: { x: pos.x, y: groundY + R * .1, z: pos.z }, size: R * .30, color: nuke ? 0xffffff : 0xfff8e0, life: .30 + (nuke ? .22 : 0), opacity: 1, growth: R * 3, maxScale: R * (nuke ? 1.3 : 1) });
@@ -3143,6 +3499,492 @@ window.resetCityStrikeFX = () => pooledEffects.reset();
 
 function applyCameraShake(amount){ shakeAmount = Math.max(shakeAmount, amount); }
 
+// ════════════════════════════════════════════════════════════════════════
+// REALISM FRAMEWORK — thermodynamic blast clouds, fireballs, 30-ft ground
+// shock walls, material-aware 3D fracture debris and dynamic tree collapse.
+// Everything is pooled instanced geometry: no per-frame allocation.
+// ════════════════════════════════════════════════════════════════════════
+function createRealismFramework(host){
+    const T = host.THREE, scene = host.scene, camera = host.camera;
+    const tierMul = host.veryLowEnd ? .32 : host.lowEnd ? .6 : 1;
+    const CAP_SMOKE = host.veryLowEnd ? 70 : host.lowEnd ? 150 : 260;
+    const CAP_FIRE  = host.veryLowEnd ? 48 : host.lowEnd ? 96 : 170;
+    const CAP_FBALL = 10, CAP_WALL = host.veryLowEnd ? 6 : 14;
+    const CAP_CHUNK = host.veryLowEnd ? 150 : host.lowEnd ? 300 : 520;
+    const CAP_SHARD = host.veryLowEnd ? 90 : host.lowEnd ? 180 : 320;
+    const FALL_CAP_PER_SPECIES = host.veryLowEnd ? 8 : 18;
+    const _m4 = new T.Matrix4(), _q = new T.Quaternion(), _e = new T.Euler(), _s = new T.Vector3(), _p = new T.Vector3();
+    const _sun = new T.Vector3(0.6,0.8,0.4);
+    const HIDDEN = new T.Matrix4().makeScale(0,0,0);
+    const events = [];
+    let flashOverlay = host.flashOverlay || null;
+    let flashLevel = 0;
+
+    // -- GLSL: compact 3D value noise so every puff is an eroded 3D volume --
+    const GLSL_NOISE = `
+        float rfHash(vec3 p){ p=fract(p*0.3183099+.1); p*=17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
+        float rfNoise(vec3 p){ vec3 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f);
+          float n000=rfHash(i+vec3(0,0,0)),n100=rfHash(i+vec3(1,0,0)),n010=rfHash(i+vec3(0,1,0)),n110=rfHash(i+vec3(1,1,0));
+          float n001=rfHash(i+vec3(0,0,1)),n101=rfHash(i+vec3(1,0,1)),n011=rfHash(i+vec3(0,1,1)),n111=rfHash(i+vec3(1,1,1));
+          return mix(mix(mix(n000,n100,f.x),mix(n010,n110,f.x),f.y),mix(mix(n001,n101,f.x),mix(n011,n111,f.x),f.y),f.z); }
+        float rfFbm(vec3 p){ float v=0.0,a=0.55; for(int i=0;i<4;i++){ v+=a*rfNoise(p); p=p*2.07+11.3; a*=0.5; } return v; }`;
+    const INST_VERT = `
+        attribute vec3 iColor; attribute float iAlpha; attribute float iSeed;
+        varying vec3 vL; varying vec3 vW; varying vec3 vC; varying float vA; varying float vSeed;
+        void main(){ vL=position; vC=iColor; vA=iAlpha; vSeed=iSeed;
+          vec4 w=modelMatrix*instanceMatrix*vec4(position,1.0); vW=w.xyz;
+          gl_Position=projectionMatrix*viewMatrix*w; }`;
+
+    const smokeMat = new T.ShaderMaterial({ transparent:true, depthWrite:false, side:T.DoubleSide,
+        uniforms:{ sunDir:{value:_sun}, sunCol:{value:new T.Color(1,0.96,0.86)}, fogCol:{value:new T.Color(0.74,0.82,0.88)}, fogFar:{value:9000} },
+        vertexShader: INST_VERT,
+        fragmentShader: `varying vec3 vL; varying vec3 vW; varying vec3 vC; varying float vA; varying float vSeed;
+          uniform vec3 sunDir; uniform vec3 sunCol; uniform vec3 fogCol; uniform float fogFar;
+          ${GLSL_NOISE}
+          void main(){ float r=length(vL);
+            float shell=smoothstep(1.18,0.12,r);
+            float n=rfFbm(normalize(vL+vec3(0.001))*1.6 + vL*0.9 + vec3(vSeed*4.1,vSeed*1.7,vSeed*2.9));
+            float dens=shell*smoothstep(0.14,0.72,n);
+            vec3 N=normalize(vL+vec3(0.0,0.28,0.0));
+            float lit=0.22+0.85*max(dot(N,sunDir),0.0);
+            float under=smoothstep(0.5,-0.65,vL.y); lit*=1.0-0.38*under;
+            vec3 col=vC*lit*sunCol;
+            float d=distance(cameraPosition,vW); float fog=smoothstep(fogFar*0.55,fogFar,d);
+            col=mix(col,fogCol,fog*0.85);
+            float a=dens*vA; if(a<0.008) discard;
+            gl_FragColor=vec4(col,a);
+            #include <tonemapping_fragment> #include <colorspace_fragment> }` });
+    const fireMat = new T.ShaderMaterial({ transparent:true, depthWrite:false, blending:T.AdditiveBlending, side:T.DoubleSide,
+        uniforms:{},
+        vertexShader: INST_VERT,
+        fragmentShader: `varying vec3 vL; varying vec3 vC; varying float vA; varying float vSeed;
+          ${GLSL_NOISE}
+          void main(){ float r=length(vL);
+            float core=smoothstep(1.02,0.0,r);
+            float n=rfFbm(vL*2.3+vec3(vSeed*3.7,vSeed*2.1,vSeed*5.3));
+            float hot=core*smoothstep(0.08,0.82,n);
+            if(hot*vA<0.006) discard;
+            vec3 col=vC*(0.55+1.9*hot)+vec3(1.0,0.85,0.55)*core*0.5;
+            gl_FragColor=vec4(col*(0.35+hot*1.5), hot*vA);
+            #include <tonemapping_fragment> #include <colorspace_fragment> }` });
+    const fballMat = new T.ShaderMaterial({ transparent:true, depthWrite:false, blending:T.AdditiveBlending, side:T.DoubleSide,
+        uniforms:{},
+        vertexShader: INST_VERT,
+        fragmentShader: `varying vec3 vL; varying vec3 vC; varying float vA; varying float vSeed;
+          ${GLSL_NOISE}
+          void main(){ float r=length(vL);
+            float body=smoothstep(1.06,0.18,r);
+            float n=rfFbm(vL*2.6+vec3(vSeed*2.3,vSeed*4.1,vSeed*1.7));
+            float hot=body*(0.72+0.28*n);
+            vec3 col=mix(vC,vec3(1.0,0.95,0.82),body*0.85)*(0.85+0.6*n);
+            float a=hot*vA; if(a<0.006) discard;
+            gl_FragColor=vec4(col*(0.6+a*1.6),a);
+            #include <tonemapping_fragment> #include <colorspace_fragment> }` });
+
+    // Vertical cylindrical shock front (the 30-ft ground blast wave).
+    const wallGeo = new T.CylinderGeometry(1,1,1,56,1,true);
+    const wallMat = new T.ShaderMaterial({ transparent:true, depthWrite:false, blending:T.AdditiveBlending, side:T.DoubleSide,
+        uniforms:{ fogFar:{value:9000}, fogCol:{value:new T.Color(0.85,0.82,0.74)} },
+        vertexShader:`attribute float iAlpha; attribute float iSeed; varying float vH; varying float vAng;
+            varying float vA; varying float vSeed; varying vec3 vW;
+            void main(){ vH=position.y+0.5; vAng=atan(position.z,position.x); vA=iAlpha; vSeed=iSeed;
+              vec4 w=modelMatrix*instanceMatrix*vec4(position,1.0); vW=w.xyz;
+              gl_Position=projectionMatrix*viewMatrix*w; }`,
+        fragmentShader:`varying float vH; varying float vAng; varying float vA; varying float vSeed; varying vec3 vW;
+            uniform float fogFar; uniform vec3 fogCol;
+            ${GLSL_NOISE}
+            void main(){ float n=rfFbm(vec3(cos(vAng)*2.0+vSeed, vH*3.0, sin(vAng)*2.0));
+              float broken=smoothstep(0.25,0.85,n);
+              float rim=pow(smoothstep(0.0,0.5,vH),1.4);
+              float d=distance(cameraPosition,vW); float fog=smoothstep(fogFar*0.6,fogFar,d);
+              float a=broken*rim*vA*(1.0-fog*0.9); if(a<0.006) discard;
+              vec3 col=mix(vec3(1.0,0.96,0.82),fogCol,fog);
+              gl_FragColor=vec4(col*(0.5+1.5*a),a);
+              #include <tonemapping_fragment> #include <colorspace_fragment> }` });
+
+    function makePool(cap, geo, mat){
+        const mesh = new T.InstancedMesh(geo, mat, cap);
+        mesh.frustumCulled = false; mesh.count = cap; mesh.renderOrder = 4;
+        mesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
+        const col = new T.InstancedBufferAttribute(new Float32Array(cap*3),3).setUsage(T.DynamicDrawUsage);
+        const alp = new T.InstancedBufferAttribute(new Float32Array(cap),1).setUsage(T.DynamicDrawUsage);
+        const seed = new T.InstancedBufferAttribute(new Float32Array(cap),1);
+        geo.setAttribute('iColor',col); geo.setAttribute('iAlpha',alp); geo.setAttribute('iSeed',seed);
+        for(let i=0;i<cap;i++) mesh.setMatrixAt(i,HIDDEN);
+        mesh.instanceMatrix.needsUpdate = true; scene.add(mesh);
+        const st = new Array(cap); for(let i=0;i<cap;i++) st[i]={alive:false};
+        let cursor = 0;
+        function alloc(){ for(let k=0;k<cap;k++){ const i=(cursor+k)%cap; if(!st[i].alive){cursor=(i+1)%cap;return i;} }
+            let old=0,oa=1e9; for(let i=0;i<cap;i++){ const a=(st[i].alive?st[i].age/st[i].life:1); if(a>oa){oa=a;old=i;} } return old; }
+        function writeColor(i,hex,mult=1){ const r=((hex>>16)&255)/255*mult,g=((hex>>8)&255)/255*mult,b=(hex&255)/255*mult; col.setXYZ(i,r,g,b); }
+        return { cap, mesh, st, col, alp, seed, alloc, writeColor };
+    }
+    const puffGeo = new T.IcosahedronGeometry(1, host.lowEnd?1:2);
+    const smoke = makePool(CAP_SMOKE, puffGeo, smokeMat); smoke.mesh.renderOrder = 6;
+    const fire  = makePool(CAP_FIRE,  new T.IcosahedronGeometry(1,1), fireMat); fire.mesh.renderOrder = 5;
+    const fballs = makePool(CAP_FBALL, new T.IcosahedronGeometry(1,2), fballMat); fballs.mesh.renderOrder = 5;
+    const walls = makePool(CAP_WALL, wallGeo, wallMat); walls.mesh.renderOrder = 5;
+
+    // -- 3D material-aware fracture debris -------------------------------------
+    const FRACTURE_COLORS = {
+        wood:[0x7d5735,0x66462b,0x8a6a42], bark:[0x5a4128,0x4a3520,0x6b5033],
+        stone:[0x8e8a82,0x7d7972,0xa09b92], brick:[0x9c4632,0x83392a,0xb1553f],
+        metal:[0x8b949c,0x6f7880,0xaab2b8], dirt:[0x6e5a3c,0x5f4d33,0x7d6a48],
+        char:[0x221c18,0x2c241e,0x181410], leaf:[0x3f7b35,0x4f8a3a,0x677a33], glass:[0xaad4e6,0xcfe8f2,0x9ec6dc]
+    };
+    const chunkMat = host.lowEnd ? new T.MeshLambertMaterial({color:0xffffff}) : new T.MeshStandardMaterial({color:0xffffff,roughness:.92,metalness:.12});
+    const chunkMesh = new T.InstancedMesh(new T.BoxGeometry(0.42,0.34,0.36), chunkMat, CAP_CHUNK);
+    chunkMesh.frustumCulled=false; chunkMesh.instanceMatrix.setUsage(T.DynamicDrawUsage); chunkMesh.renderOrder=2;
+    const chunkColor = new T.InstancedBufferAttribute(new Float32Array(CAP_CHUNK*3),3).setUsage(T.DynamicDrawUsage);
+    chunkMesh.geometry.setAttribute('instanceColor',chunkColor); chunkMesh.instanceColor=chunkColor;
+    for(let i=0;i<CAP_CHUNK;i++) chunkMesh.setMatrixAt(i,HIDDEN); scene.add(chunkMesh);
+    const chunks = new Array(CAP_CHUNK); for(let i=0;i<CAP_CHUNK;i++) chunks[i]={alive:false};
+    // Glass + leaf shards share one tetra pool (color distinguishes them).
+    const shardGeo = new T.TetrahedronGeometry(0.5, 0);
+    const shardMat = new T.MeshLambertMaterial({color:0xffffff,transparent:true,opacity:.78,side:T.DoubleSide});
+    const shardMesh = new T.InstancedMesh(shardGeo, shardMat, CAP_SHARD);
+    shardMesh.frustumCulled=false; shardMesh.instanceMatrix.setUsage(T.DynamicDrawUsage); shardMesh.renderOrder=3;
+    const shardColor = new T.InstancedBufferAttribute(new Float32Array(CAP_SHARD*3),3).setUsage(T.DynamicDrawUsage);
+    shardMesh.geometry.setAttribute('instanceColor',shardColor); shardMesh.instanceColor=shardColor;
+    for(let i=0;i<CAP_SHARD;i++) shardMesh.setMatrixAt(i,HIDDEN); scene.add(shardMesh);
+    const shards = new Array(CAP_SHARD); for(let i=0;i<CAP_SHARD;i++) shards[i]={alive:false};
+    let chunkCursor=0, shardCursor=0;
+    const _tmpC = new T.Color(), _tmpC2 = new T.Color();
+    function writeMeshColor(attr,i,kind){ const pal=FRACTURE_COLORS[kind]||FRACTURE_COLORS.stone; _tmpC.setHex(pal[(Math.random()*pal.length)|0]); attr.setXYZ(i,_tmpC.r,_tmpC.g,_tmpC.b); }
+    function spawnChunk(o){
+        let i=chunkCursor; for(let k=0;k<CAP_CHUNK;k++){ if(!chunks[i].alive)break; i=(i+1)%CAP_CHUNK; } chunkCursor=(i+1)%CAP_CHUNK;
+        const grav = o.kind==='wood'?15:o.kind==='metal'?26:o.kind==='char'?16:22;
+        chunks[i]={ alive:true,x:o.x,y:o.y,z:o.z,vx:o.vx,vy:o.vy,vz:o.vz,
+            sx:o.sx||.5,sy:o.sy||.4,sz:o.sz||.5, rx:Math.random()*6.28,ry:Math.random()*6.28,rz:Math.random()*6.28,
+            wx:(Math.random()-.5)*9,wy:(Math.random()-.5)*9,wz:(Math.random()-.5)*9, grav,
+            settled:false,life:26+Math.random()*34,age:0,kind:o.kind };
+        writeMeshColor(chunkColor,i,o.kind);
+    }
+    function spawnShard(o){
+        let i=shardCursor; for(let k=0;k<CAP_SHARD;k++){ if(!shards[i].alive)break; i=(i+1)%CAP_SHARD; } shardCursor=(i+1)%CAP_SHARD;
+        shards[i]={ alive:true,x:o.x,y:o.y,z:o.z,vx:o.vx,vy:o.vy,vz:o.vz,s:o.s||.4,
+            rx:Math.random()*6.28,ry:Math.random()*6.28,rz:Math.random()*6.28,wx:(Math.random()-.5)*12,wy:(Math.random()-.5)*12,wz:(Math.random()-.5)*12,
+            settled:false,life:12+Math.random()*18,age:0,kind:o.kind };
+        writeMeshColor(shardColor,i,o.kind);
+    }
+    // Radial burst of material chunks from a position.
+    function fracture(origin, blastPos, count, kinds, power, scaleMul=1){
+        const dx=origin.x-blastPos.x, dz=origin.z-blastPos.z; const len=Math.hypot(dx,dz);
+        let nx, nz; if(len<.4){ const a=Math.random()*6.283; nx=Math.cos(a); nz=Math.sin(a); } else { nx=dx/len; nz=dz/len; }
+        for(let i=0;i<count;i++){
+            const kind = Array.isArray(kinds)? kinds[(Math.random()*kinds.length)|0] : kinds;
+            const spread = (Math.random()-.5)*power*.7, sp = power*(0.55+Math.random()*0.75);
+            const o = { x:origin.x+(Math.random()-.5)*1.4, y:origin.y+(Math.random()-.5)*1.2, z:origin.z+(Math.random()-.5)*1.4,
+                vx:nx*sp - nz*spread + (Math.random()-.5)*power*.25,
+                vz:nz*sp + nx*spread + (Math.random()-.5)*power*.25,
+                vy: power*(0.32+Math.random()*0.6), kind,
+                sx:(0.25+Math.random()*0.8)*scaleMul, sy:(0.18+Math.random()*0.6)*scaleMul, sz:(0.25+Math.random()*0.8)*scaleMul };
+            if(kind==='glass'||kind==='leaf'){ spawnShard({x:o.x,y:o.y,z:o.z,vx:o.vx,vy:o.vy*1.15+1.5,vz:o.vz,s:(0.18+Math.random()*0.35)*scaleMul,kind}); }
+            else spawnChunk(o);
+        }
+    }
+    function updateRigidPool(dt){
+        let changed=false;
+        for(let i=0;i<CAP_CHUNK;i++){ const c=chunks[i]; if(!c.alive) continue; c.age+=dt;
+            if(c.age>c.life){ c.alive=false; chunkMesh.setMatrixAt(i,HIDDEN); changed=true; continue; }
+            if(!c.settled){
+                c.vy-=c.grav*dt; c.vx*=Math.exp(-.16*dt); c.vz*=Math.exp(-.16*dt);
+                c.x+=c.vx*dt; c.y+=c.vy*dt; c.z+=c.vz*dt;
+                c.rx+=c.wx*dt; c.ry+=c.wy*dt; c.rz+=c.wz*dt;
+                const gy=host.getTerrainHeight(c.x,c.z)+.16;
+                if(c.y<gy){ c.y=gy; if(c.vy<-2.5){ c.vy*=-0.3; c.vx*=.55; c.vz*=.55; c.wx*=.6;c.wy*=.6;c.wz*=.6; } else { c.settled=true; c.vx=c.vy=c.vz=0; } }
+                _e.set(c.rx,c.ry,c.rz); _q.setFromEuler(_e); _s.set(c.sx,c.sy,c.sz); _p.set(c.x,c.y,c.z);
+                _m4.compose(_p,_q,_s); chunkMesh.setMatrixAt(i,_m4); changed=true;
+            }
+        }
+        for(let i=0;i<CAP_SHARD;i++){ const c=shards[i]; if(!c.alive) continue; c.age+=dt;
+            if(c.age>c.life){ c.alive=false; shardMesh.setMatrixAt(i,HIDDEN); changed=true; continue; }
+            if(!c.settled){
+                const g = c.kind==='leaf'?6.5:15;
+                c.vy-=g*dt; c.vx*=Math.exp(-.3*dt); c.vz*=Math.exp(-.3*dt);
+                if(c.kind==='leaf'){ c.rx+=1.4*dt; c.rz+=Math.sin(c.age*3+i)*1.6*dt; c.vx+=Math.sin(c.age*2.2+i)*0.5*dt; }
+                else { c.rx+=c.wx*dt; c.ry+=c.wy*dt; c.rz+=c.wz*dt; }
+                c.x+=c.vx*dt; c.y+=c.vy*dt; c.z+=c.vz*dt;
+                const gy=host.getTerrainHeight(c.x,c.z)+.12;
+                if(c.y<gy){ c.y=gy; if(c.kind==='leaf'){c.settled=true;c.vx=c.vy=c.vz=0;} else if(c.vy<-2){ c.vy*=-0.34; c.vx*=.5; c.vz*=.5; } else { c.settled=true; c.vx=c.vy=c.vz=0; } }
+                _e.set(c.rx,c.ry,c.rz); _q.setFromEuler(_e); _s.set(c.s,c.s*(c.kind==='leaf'?0.28:0.55),c.s); _p.set(c.x,c.y,c.z);
+                _m4.compose(_p,_q,_s); shardMesh.setMatrixAt(i,_m4); changed=true;
+            }
+        }
+        if(changed){ chunkMesh.instanceMatrix.needsUpdate=true; chunkColor.needsUpdate=true; shardMesh.instanceMatrix.needsUpdate=true; shardColor.needsUpdate=true; }
+    }
+    // Re-kick resting debris hit by a fresh blast.
+    function impulseDebris(bx,by,bz,R,power){
+        for(let i=0;i<CAP_CHUNK;i++){ const c=chunks[i]; if(!c.alive||!c.settled) continue;
+            const dx=c.x-bx,dz=c.z-bz,d=Math.hypot(dx,dz); if(d>R||d<0.01) continue;
+            const f=power*(1-d/R); c.settled=false; c.vx=dx/d*f; c.vz=dz/d*f; c.vy=f*.7; c.wx=(Math.random()-.5)*8;c.wz=(Math.random()-.5)*8; c.age=Math.min(c.age,c.life-8); }
+    }
+
+    // -- Thermodynamic puff spawners -------------------------------------------
+    function spawnSmoke(o){
+        const i=smoke.alloc(), p=smoke.st[i];
+        p.alive=true; p.x=o.x;p.y=o.y;p.z=o.z; p.vx=o.vx||0;p.vy=o.vy||0;p.vz=o.vz||0;
+        p.r=o.r||4; p.maxR=o.maxR||p.r*6; p.vr=o.vr||6; p.age=0; p.life=o.life||14;
+        p.alpha=o.alpha==null?.8:o.alpha; p.hot=o.hot==null?.5:o.hot; p.buoy=o.buoy==null?1:o.buoy;
+        p.axis=o.axis?{x:o.axis.x,z:o.axis.z,pull:o.axisPull==null?.25:o.axisPull}:null;
+        p.col0=new T.Color(o.hotColor||0x241d18); p.col1=new T.Color(o.col||0x6c6a6d); p.seed=Math.random()*40;
+        smoke.seed.setX(i,p.seed); smoke.writeColor(i,o.hotColor||0x241d18);
+        return p;
+    }
+    function spawnFire(o){
+        const i=fire.alloc(), p=fire.st[i];
+        p.alive=true; p.x=o.x;p.y=o.y;p.z=o.z; p.vx=o.vx||0;p.vy=o.vy||0;p.vz=o.vz||0;
+        p.r=o.r||3; p.maxR=o.maxR||p.r*1.6; p.vr=o.vr||5; p.age=0; p.life=o.life||.9; p.alpha=o.alpha==null?.95:o.alpha; p.seed=Math.random()*40;
+        fire.seed.setX(i,p.seed); fire.writeColor(i,o.color||0xff7a22);
+        return p;
+    }
+    function spawnFireball(o){
+        const i=fballs.alloc(), p=fballs.st[i];
+        p.alive=true; p.x=o.x;p.y=o.y;p.z=o.z; p.vy=o.vy||0; p.r0=o.r0||4; p.rMax=o.rMax||40; p.grow=o.grow||.7;
+        p.age=0; p.life=o.life||3; p.seed=Math.random()*40; p.colHex=o.color||0xff7a22;
+        fballs.seed.setX(i,p.seed); fballs.writeColor(i,p.colHex);
+        return p;
+    }
+    function spawnWall(o){
+        const i=walls.alloc(), p=walls.st[i];
+        p.alive=true; p.x=o.x;p.z=o.z; p.groundY=o.groundY||0; p.r0=o.r0||4; p.r1=o.r1||60;
+        p.h=o.height||9; p.k=o.k||1.8; p.age=-(o.delay||0); p.life=o.life||3; p.a0=o.alpha||.5; p.seed=Math.random()*40;
+        walls.seed.setX(i,p.seed); walls.mesh.setMatrixAt(i,HIDDEN); return p;
+    }
+    function setPuffMatrix(pool,i,p,r){
+        _p.set(p.x,p.y,p.z); _q.identity(); _s.setScalar(r); _m4.compose(_p,_q,_s); pool.mesh.setMatrixAt(i,_m4);
+    }
+    function updatePools(dt, windX, windZ){
+        // smoke — buoyant expansion, Taylor entrainment, axial pull into the stem
+        for(let i=0;i<CAP_SMOKE;i++){ const p=smoke.st[i]; if(!p.alive) continue; p.age+=dt;
+            if(p.age>=p.life){ p.alive=false; smoke.mesh.setMatrixAt(i,HIDDEN); smoke.alp.setX(i,0); continue; }
+            const heat=Math.max(0,1-p.age/(p.life*0.6));
+            p.vy+=(1.4+p.buoy*5.5)*heat*dt;
+            const entrain=p.vr*(1-Math.exp(-p.age*2.0))+1.2;
+            p.r=Math.min(p.maxR, p.r+entrain*dt);
+            if(p.axis){ p.vx+=(p.axis.x-p.x)*p.axis.pull*dt; p.vz+=(p.axis.z-p.z)*p.axis.pull*dt; }
+            p.vx+=(windX-p.vx)*Math.min(1,.10*dt); p.vz+=(windZ-p.vz)*Math.min(1,.10*dt);
+            p.x+=p.vx*dt; p.y+=p.vy*dt; p.z+=p.vz*dt;
+            const ta=p.age/p.life, appear=T.MathUtils.smoothstep(ta,.0,.10);
+            const fade=ta>.62?Math.max(0,1-(ta-.62)/.38):1;
+            smoke.alp.setX(i,p.alpha*appear*fade);
+            const c=_tmpC.copy(p.col0).lerp(p.col1, Math.min(1,ta*1.15)); smoke.col.setXYZ(i,c.r,c.g,c.b);
+            setPuffMatrix(smoke,i,p,p.r);
+        }
+        // fire — fast hot core, consumed as it cools
+        for(let i=0;i<CAP_FIRE;i++){ const p=fire.st[i]; if(!p.alive) continue; p.age+=dt;
+            if(p.age>=p.life){ p.alive=false; fire.mesh.setMatrixAt(i,HIDDEN); fire.alp.setX(i,0); continue; }
+            p.vy+=7.5*dt; p.vx+=(windX-p.vx)*Math.min(1,.25*dt); p.vz+=(windZ-p.vz)*Math.min(1,.25*dt);
+            p.x+=p.vx*dt; p.y+=p.vy*dt; p.z+=p.vz*dt;
+            p.r=Math.min(p.maxR, p.r+p.vr*dt);
+            const ta=p.age/p.life; fire.alp.setX(i,p.alpha*(1-ta)*(1-ta));
+            setPuffMatrix(fire,i,p,p.r);
+        }
+        for(let i=0;i<CAP_FBALL;i++){ const p=fballs.st[i]; if(!p.alive) continue; p.age+=dt;
+            if(p.age>=p.life){ p.alive=false; fballs.mesh.setMatrixAt(i,HIDDEN); fballs.alp.setX(i,0); continue; }
+            p.y+=p.vy*dt;
+            const grow=T.MathUtils.smoothstep(p.age/p.grow,0,1);
+            const r=p.r0+(p.rMax-p.r0)*grow;
+            const cool=p.age/p.life, fade=cool>.55?Math.max(0,1-(cool-.55)/.45):1;
+            fballs.alp.setX(i, fade*(.55+.45*grow));
+            const c=_tmpC.set(p.colHex).lerp(_tmpC2.set(0x5a1e08), Math.min(.8,cool*.9)); fballs.col.setXYZ(i,c.r,c.g,c.b);
+            _p.set(p.x,p.y,p.z); _q.identity(); _s.setScalar(r*(1-.08*cool)); _m4.compose(_p,_q,_s); fballs.mesh.setMatrixAt(i,_m4);
+        }
+        for(let i=0;i<CAP_WALL;i++){ const p=walls.st[i]; if(!p.alive) continue; p.age+=dt;
+            if(p.age<0){ continue; } if(p.age>=p.life){ p.alive=false; walls.mesh.setMatrixAt(i,HIDDEN); walls.alp.setX(i,0); continue; }
+            const r=p.r0+(p.r1-p.r0)*(1-Math.exp(-p.k*p.age));
+            const ta=p.age/p.life; walls.alp.setX(i,p.a0*Math.exp(-ta*2.1));
+            _p.set(p.x,p.groundY+p.h*.5,p.z); _q.identity(); _s.set(r,p.h,r); _m4.compose(_p,_q,_s); walls.mesh.setMatrixAt(i,_m4);
+        }
+        const gate=(pool,c)=>{let a=false;for(let i=0;i<pool.cap;i++)if(pool.st[i].alive){a=true;break;} if(a||pool.wasAlive){pool.mesh.instanceMatrix.needsUpdate=true; pool.alp.needsUpdate=true; pool.col&&(pool.col.needsUpdate=true);} pool.wasAlive=a;};
+        gate(smoke);gate(fire);gate(fballs);gate(walls);
+    }
+
+    // -- Detonation event = the thermodynamic lifecycle of one blast -----------
+    function detonate(pos, cfg, blastType){
+        const R = Math.max(4, cfg.radius||30);
+        const nuke = blastType==='nuke', moab = blastType==='moab';
+        const napalm = blastType==='napalm';
+        const big = nuke||moab||R>=95;
+        const sc = nuke?2.6:moab?1.7:R>=220?1.25:R>=95?.85:.5; // visual scale band
+        const gy = host.getTerrainHeight(pos.x,pos.z);
+        const ev = { x:pos.x,y:Math.max(gy,pos.y||gy),z:pos.z, R, age:0, sc, big, nuke, moab, napalm,
+            columnDur: nuke?9:moab?6:big?4.5:1.8, life: nuke?16:moab?12:big?9:4,
+            stemAcc:0, frontTimer:0, fball:null, gy };
+        events.push(ev);
+        impulseDebris(pos.x,pos.y||gy,pos.z,R*1.1,R*.28);
+        // Blinding initial flash: white screen that fades with the fireball age.
+        flashLevel = Math.max(flashLevel, nuke?1:moab?.92:big?.62:R>=40?.32:.14);
+        // Brief white-hot flash bubble.
+        spawnFireball({ x:pos.x,y:gy+R*.12,z:pos.z, r0:R*.04, rMax:R*(nuke?.55:big?.4:.3), grow:.22, life:nuke?.6:.4, color:0xffffff });
+        if(big){
+            // Massive incendiary fireball that rises slightly and cools.
+            ev.fball = spawnFireball({ x:pos.x,y:gy+R*.16,z:pos.z, r0:R*.08, rMax:R*(nuke?.46:moab?.38:.24),
+                grow:nuke?1.1:.8, life:nuke?4.2:moab?3.4:2.4, color:nuke?0xffd08a:0xff8a30, vy:R*(nuke?.10:.06) });
+        }
+        // ── 30-ft ground blast wave (scaled for smaller warheads) ──
+        const wallH = nuke?9.2:moab?9.2:Math.max(2.2,R*.055);
+        const wallCount = nuke?3:moab?2:big?2:1;
+        for(let w=0;w<wallCount;w++){
+            spawnWall({ x:pos.x,z:pos.z,groundY:gy+.2, r0:R*.06, r1:R*(1.55+w*.45),
+                height:wallH*(1-w*.18), k:nuke?1.15:1.7, life:2.6+w*.5, alpha:.55-w*.12, delay:w*(nuke?.5:.32) });
+        }
+        // Initial incendiary core: fire puffs expand OUTWARD from centre (not
+        // randomly painted): concentric shells give a true incendiary fireball.
+        const fireShells = big?3:2, fireN = Math.round((big?26:10)*tierMul*(.7+sc));
+        for(let sh=0; sh<fireShells; sh++){
+            const rr=R*(.1+sh*.16), n=Math.max(4,Math.round(fireN/(sh+1)));
+            for(let i=0;i<n;i++){ const a=i/n*Math.PI*2+sh*.7, rr2=rr*(.8+Math.random()*.4);
+                spawnFire({ x:pos.x+Math.cos(a)*rr2, y:gy+R*.1+Math.random()*R*.14, z:pos.z+Math.sin(a)*rr2,
+                    vx:Math.cos(a)*R*(.25+sh*.5), vz:Math.sin(a)*R*(.25+sh*.5), vy:R*.18+Math.random()*R*.12,
+                    r:R*(.03+Math.random()*.03)*sc+1.2, maxR:R*.16*sc+6, vr:R*.5, life:.5+Math.random()*.7, color:[0xffffdd,0xffb040,0xff6420][sh%3] }); }
+        }
+        // Dense ground-dust + soot shell hugging the terrain.
+        const dustN = Math.round((nuke?60:big?34:12)*tierMul);
+        for(let i=0;i<dustN;i++){ const a=Math.random()*6.283, rr=Math.random()*R*.5;
+            spawnSmoke({ x:pos.x+Math.cos(a)*rr, y:gy+1.5+Math.random()*4, z:pos.z+Math.sin(a)*rr,
+                vx:Math.cos(a)*R*(.25+Math.random()*.4), vz:Math.sin(a)*R*(.25+Math.random()*.4), vy:2+Math.random()*4,
+                r:R*.05*sc+2.5, maxR:R*(.34+Math.random()*.18), vr:R*.32, life:(nuke?20:big?14:8)*(.7+Math.random()*.6),
+                alpha:.5+Math.random()*.28, hot:.2, buoy:.35, hotColor:0x4a4038, col:0x8d8478 }); }
+        // Immediate dense smoke shell around the core.
+        const smokeN = Math.round((nuke?46:big?26:9)*tierMul);
+        for(let i=0;i<smokeN;i++){ const a=Math.random()*6.283, rr=Math.pow(Math.random(),1.4)*R*.5;
+            spawnSmoke({ x:pos.x+Math.cos(a)*rr, y:gy+Math.random()*R*.35+2, z:pos.z+Math.sin(a)*rr,
+                vx:Math.cos(a)*R*.12, vz:Math.sin(a)*R*.12, vy:R*.06+Math.random()*R*.08,
+                r:R*.05*sc+2, maxR:R*(nuke?.5:moab?.42:.32), vr:R*.22,
+                life:(nuke?26:moab?20:big?15:9)*(.65+Math.random()*.6), alpha:nuke?.78:.7,
+                hot:.9, buoy:1.1, axis:big?{x:pos.x,z:pos.z}:null, axisPull:.12,
+                hotColor:big?0x1c1714:0x2b2723, col:nuke?0x62605f:0x5c5854 }); }
+        // Ground fracture: stone/dirt chunks thrown by the overpressure.
+        const groundChunks = Math.round((nuke?180:moab?120:big?60:R>=30?22:8)*tierMul);
+        fracture(pos, pos, groundChunks, ['stone','dirt'], Math.min(52,R*.16), R>200?2.2:1.2);
+        // Napalm leaves persistent fires.
+        if(napalm){ for(let i=0;i<Math.round(26*tierMul);i++){ const a=Math.random()*6.283,rr=Math.random()*R*1.05,x=pos.x+Math.cos(a)*rr,z=pos.z+Math.sin(a)*rr;
+            spawnFire({x,y:host.getTerrainHeight(x,z)+.6,z,r:1+Math.random()*1.4,maxR:5,vr:.6,life:3+Math.random()*3,vy:1.2}); } }
+        return ev;
+    }
+    function eventMushroomCap(ev){ // when the fireball dies, leave an opaque cooling cap
+        const n=Math.round((ev.nuke?40:ev.moab?30:18)*tierMul), top=ev.y+ev.R*(ev.nuke?.34:.22);
+        for(let i=0;i<n;i++){ const a=Math.random()*6.283, rr=Math.sqrt(Math.random())*ev.R*(ev.nuke?.42:.24);
+            spawnSmoke({ x:ev.x+Math.cos(a)*rr, y:top+(Math.random()-.5)*ev.R*.08, z:ev.z+Math.sin(a)*rr,
+                vx:Math.cos(a)*ev.R*.04, vz:Math.sin(a)*ev.R*.04, vy:ev.R*.02,
+                r:ev.R*.06+3, maxR:ev.R*(ev.nuke?.62:.5), vr:ev.R*.1, life:ev.nuke?34:24,
+                alpha:.82, hot:.5, buoy:.6, axis:{x:ev.x,z:ev.z}, axisPull:.06, hotColor:0x2b2622, col:0x66635f }); }
+    }
+    function updateEvents(dt, windX, windZ){
+        for(let e=events.length-1;e>=0;e--){ const ev=events[e]; ev.age+=dt;
+            // Fireball death → mushroom cap transition.
+            if(ev.fball && !ev.fball.alive){ eventMushroomCap(ev); ev.fball=null; }
+            if(ev.age<ev.columnDur){
+                // Rising thermal column: puffs born along the stem as it climbs.
+                const rise = ev.R*(ev.nuke?.16:ev.moab?.13:.1);
+                const stemH = Math.min(ev.R*(ev.nuke?.9:ev.moab?.6:3.4), ev.age*rise);
+                const rate=(ev.nuke?26:ev.big?15:6)*tierMul; ev.stemAcc+=dt*rate;
+                while(ev.stemAcc>1){ ev.stemAcc-=1;
+                    const f=Math.random(); const yy=Math.pow(f,1.25)*stemH;
+                    const stemR=(2.5+yy*.05)*(ev.sc+.4);
+                    const a=Math.random()*6.283, rr=Math.random()*stemR;
+                    spawnSmoke({ x:ev.x+Math.cos(a)*rr, y:ev.gy+yy, z:ev.z+Math.sin(a)*rr,
+                        vx:(Math.random()-.5)*ev.R*.03, vz:(Math.random()-.5)*ev.R*.03, vy:rise*.55+Math.random()*4,
+                        r:stemR*(.7+Math.random()*.5), maxR:stemR*6+ev.R*.12, vr:4+ev.R*.03,
+                        life:(ev.nuke?30:ev.big?18:9)*(.7+Math.random()*.6), alpha:ev.nuke?.8:.72,
+                        hot:1-f*.6, buoy:1.3-f*.5, axis:{x:ev.x,z:ev.z}, axisPull:.42*(1-f),
+                        hotColor:0x171310, col:ev.nuke?0x5f5d5c:0x595450 });
+                    if(ev.age<.9 && Math.random()<.4) spawnFire({x:ev.x+Math.cos(a)*rr*1.4,y:ev.gy+yy*.4,z:ev.z+Math.sin(a)*rr*1.4,
+                        r:2+Math.random()*2,maxR:ev.sc*8,vr:3,life:.8+Math.random()*.5,vy:6,color:0xff8030});
+                }
+                // Dust kicked up by the advancing shock front.
+                ev.frontTimer-=dt;
+                if(ev.big && ev.frontTimer<=0 && ev.age<2.6){ ev.frontTimer=.18;
+                    const frontR=Math.min(ev.R*1.5, ev.R*.1+ev.age*ev.R*.9);
+                    const n=Math.round(10*tierMul);
+                    for(let i=0;i<n;i++){ const a=Math.random()*6.283, rr=frontR*(.9+Math.random()*.2);
+                        spawnSmoke({x:ev.x+Math.cos(a)*rr,y:ev.gy+1.5,z:ev.z+Math.sin(a)*rr,
+                            vx:Math.cos(a)*ev.R*.5, vz:Math.sin(a)*ev.R*.5, vy:2+Math.random()*3,
+                            r:3+Math.random()*3,maxR:ev.R*.16+8,vr:ev.R*.2,life:7+Math.random()*5,alpha:.5,hot:0,buoy:.25,hotColor:0x4b4236,col:0x978c7c}); }
+                }
+            }
+            if(ev.age>ev.life && !ev.fball) events.splice(e,1);
+        }
+    }
+
+    // -- Dynamic tree collapse ------------------------------------------------
+    const fallenMeshes=[], fallen=[];
+    function initFallen(speciesGeos, speciesMats){
+        for(let sp=0;sp<speciesGeos.length;sp++){
+            const m=new T.InstancedMesh(speciesGeos[sp],[speciesMats[sp].trunk,speciesMats[sp].leaf],FALL_CAP_PER_SPECIES);
+            m.frustumCulled=false; m.instanceMatrix.setUsage(T.DynamicDrawUsage); m.renderOrder=1;
+            for(let i=0;i<FALL_CAP_PER_SPECIES;i++) m.setMatrixAt(i,HIDDEN);
+            m.instanceMatrix.needsUpdate=true; scene.add(m); fallenMeshes.push(m);
+            for(let i=0;i<FALL_CAP_PER_SPECIES;i++) fallen.push({alive:false});
+        }
+    }
+    function knockTree(o){ // {x,z,baseY,scale,species,angle(fall azimuth),delay,tipSpeed}
+        if(!fallenMeshes.length)return;
+        const base=o.species*FALL_CAP_PER_SPECIES; let slot=-1;
+        for(let i=0;i<FALL_CAP_PER_SPECIES;i++) if(!fallen[base+i].alive){slot=base+i;break;}
+        if(slot<0){ let old=base,oa=-1; for(let i=0;i<FALL_CAP_PER_SPECIES;i++){ const s=fallen[base+i]; if(s.settled && s.age>oa){oa=s.age;old=base+i;} } slot=old; }
+        // Hide the recycled slot until the wave-arrival delay elapses.
+        fallenMeshes[o.species].setMatrixAt(slot-base,HIDDEN);fallenMeshes[o.species].instanceMatrix.needsUpdate=true;
+        fallen[slot]={ alive:true,x:o.x,z:o.z,baseY:o.baseY,scale:o.scale,species:o.species,
+            axis:new T.Vector3(Math.cos(o.angle),0,Math.sin(o.angle)), tilt:0, tiltVel:o.tipSpeed||.5,
+            age:0,delay:o.delay||0,settled:false,hit:false };
+    }
+    function updateFallen(dt){
+        let changed=false;
+        for(let i=0;i<fallenMeshes.length;i++){
+            const mesh=fallenMeshes[i];
+            for(let j=0;j<FALL_CAP_PER_SPECIES;j++){ const idx=i*FALL_CAP_PER_SPECIES+j, f=fallen[idx]; if(!f.alive) continue; f.age+=dt;
+                if(f.age<f.delay) continue;
+                if(!f.settled){
+                    f.tiltVel += (2.6*Math.sin(f.tilt)+0.25)*dt;
+                    f.tilt += f.tiltVel*dt;
+                    if(f.tilt>=Math.PI*.5){
+                        f.tilt=Math.PI*.5; f.settled=true;
+                        if(!f.hit){ f.hit=true;
+                            const hx=f.x+f.axis.x*4*f.scale, hz=f.z+f.axis.z*4*f.scale;
+                            if(host.onTreeImpact) host.onTreeImpact(hx, f.baseY, hz, f.scale);
+                        }
+                    }
+                    const rotAxis = new T.Vector3(0,1,0).cross(f.axis).normalize();
+                    _q.setFromAxisAngle(rotAxis, f.tilt);
+                    _p.set(f.x,f.baseY,f.z); _s.setScalar(f.scale);
+                    _m4.compose(_p,_q,_s); mesh.setMatrixAt(j,_m4); changed=true;
+                }
+            }
+        }
+        if(changed) for(const m of fallenMeshes) m.instanceMatrix.needsUpdate=true;
+    }
+
+    function update(dt, wind){
+        const t=Math.min(.05,dt);
+        if(flashOverlay){ flashLevel=Math.max(0,flashLevel-t*(flashLevel>.6?1.7:1.0)); flashOverlay.style.opacity=(flashLevel*.92).toFixed(3); }
+        updateEvents(t, wind?.x||Math.sin(performance.now()*.00011)*1.2, wind?.z||Math.cos(performance.now()*.00009)*0.7);
+        updatePools(t, wind?.x||Math.sin(performance.now()*.00011)*1.2, wind?.z||Math.cos(performance.now()*.00009)*0.7);
+        updateRigidPool(t); updateFallen(t);
+        if(scene.fog){ wallMat.uniforms.fogCol.value.copy(scene.fog.color); smokeMat.uniforms.fogCol.value.copy(scene.fog.color);
+            smokeMat.uniforms.fogFar.value=scene.fog.far; wallMat.uniforms.fogFar.value=scene.fog.far; }
+        if(host.sunDir){ smokeMat.uniforms.sunDir.value.copy(host.sunDir).normalize(); }
+        if(host.sunColor){ smokeMat.uniforms.sunCol.value.copy(host.sunColor); }
+    }
+    function setFogFar(v){ smokeMat.uniforms.fogFar.value=v; wallMat.uniforms.fogFar.value=v; }
+    function aliveCount(arr){ let n=0; for(const s of arr) if(s.alive)n++; return n; }
+    return { detonate, fracture, spawnSmoke, spawnFire, knockTree, initFallen, update, setFogFar,
+        smokeCap:CAP_SMOKE, fireCap:CAP_FIRE, chunkCap:CAP_CHUNK,
+        stats:()=>({events:events.length,smoke:aliveCount(smoke.st),fire:aliveCount(fire.st),chunks:aliveCount(chunks),fallen:aliveCount(fallen)}) };
+}
+realismFX = createRealismFramework({
+    THREE, scene, camera,
+    lowEnd: LOW_MEM, veryLowEnd: VERY_LOW_MEM,
+    flashOverlay: document.getElementById('flash-overlay'),
+    getTerrainHeight: terrainHeightAt,
+    onTreeImpact:(x,y,z,s)=>{
+        realismFX.fracture({x,y,z},{x,z},Math.round(8*s),['leaf','bark','dirt'],10,1);
+        for(let i=0;i<Math.round(5*s);i++){ const a=Math.random()*6.283; realismFX.spawnSmoke({x:x+Math.cos(a)*2,y:y+.8,z:z+Math.sin(a)*2,r:1.5+Math.random()*1.5,maxR:8,vr:1.4,life:4+Math.random()*3,alpha:.4,hot:0,buoy:.2,hotColor:0x4b4236,col:0x978c7c}); }
+    },
+    sunDir: sun.position, sunColor: sun.color
+});
+
 
 
 
@@ -3160,20 +4002,9 @@ function createExplosion(pos, blastType){
     const cfg = EXPLOSIONS[blastType];
     if(!cfg) return;
     const isBig = blastType === 'bomb' || blastType === 'missile' || blastType === 'heavyMissile' || blastType === 'moab' || blastType === 'nuke';
-    createRealisticExplosion(pos, cfg, { isBig, blastType }); // visual only: no timers, RAF, or damage
+    createRealisticExplosion(pos, cfg, { isBig, blastType, thermo:true }); // flash light, scorch, dust rings
+    if(realismFX) realismFX.detonate(pos, cfg, blastType); // thermodynamic cloud/fire/wall/debris
     queueExplosionGameplay(pos, cfg, blastType); // preserves original damage/building/forest timing exactly
-    if(blastType === 'nuke'){
-        const R = cfg.radius;
-        const gy = terrainHeightAt(pos.x, pos.z);
-        for(let ring = 0; ring < 3; ring++){
-            spawnParticle({
-                pos: new THREE.Vector3(pos.x, gy + 0.3 + ring * 0.5, pos.z),
-                size: R * (0.15 + ring * 0.05), color: 0xe8e0d0,
-                life: 4 + ring, opacity: 0.5 - ring * 0.12, growth: R * 3.5,
-                maxScale: R * (3.5 + ring), shape: 'ring', startDelay: 0.3 + ring * 0.4
-            });
-        }
-    }
 }
 
 // ─── EXPLOSION DAMAGE ───
@@ -3527,11 +4358,13 @@ let composer = null, renderPass = null, bloomPass = null, outputPass = null, gra
 let currentGfxMode = 'medium';
 function buildComposer(mode){
     if(composer){ composer.dispose(); composer = null; renderPass = null; bloomPass = null; outputPass = null; gradePass = null; ssaoPass = null; }
-    if(mode !== 'high' && mode !== 'rtx') return;
+    if(!['high','ultra','cinematic','rtx'].includes(mode)) return;
     try {
         composer = new EffectComposer(renderer);
         composer.setSize(window.innerWidth, window.innerHeight);
-        composer.setPixelRatio(Math.min(window.devicePixelRatio, mode==='rtx'?0.90:1.0));
+        composer.setPixelRatio(Math.min(window.devicePixelRatio, mode==='rtx'||mode==='cinematic'?0.92:1.0));
+        // MSAA on the HDR render target: crisp edges at long range.
+        if(renderer.capabilities.isWebGL2){ const samples=Math.min(4,renderer.capabilities.samples||4); if(composer.renderTarget1)composer.renderTarget1.samples=samples; if(composer.renderTarget2)composer.renderTarget2.samples=samples; }
         renderPass = new RenderPass(scene, camera);
         composer.addPass(renderPass);
         if(mode === 'rtx' && window.__SSAOPass){
@@ -3544,7 +4377,8 @@ function buildComposer(mode){
                 composer.addPass(ssaoPass);
             } catch(e){ ssaoPass = null; }
         }
-        bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), mode==='rtx'?.24:.16, .52, .88);
+        const bloomStrength={high:.12,ultra:.17,cinematic:.22,rtx:.26}[mode]||.15;
+        bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), bloomStrength, .52, .88);
         composer.addPass(bloomPass);
         outputPass = new OutputPass();
         composer.addPass(outputPass);
@@ -3719,24 +4553,64 @@ function drawMinimap(){
     ctx.fillText('N', W/2, H - 6);
 }
 
+// ── Satellite topographic basemap: elevation/land-use colour + contours ──
+const TOPO_RES=720, TOPO_RANGE=33000;
+let topoCache=null, topoCacheBuilding=false, topoRows=0, topoCtx2=null, topoImg=null;
+function topoColor(x,z){
+    const h=terrainHeightAt(x,z);
+    let urban=false;
+    for(const c of CITY_CENTERS){if(Math.hypot(x-c.x,z-c.z)<CFG.cityRadius+220){urban=true;break;}}
+    if(!urban)for(const t of TOWN_CENTERS){if(Math.hypot(x-t.x,z-t.z)<(t.organicR||200)+90){urban=true;break;}}
+    const patch=fbm(x*.00011+31,z*.00011-17,3), field=fbm(x*.0004,z*.0004,2);
+    let r,g,b;
+    if(urban){const v=.5+patch*.35;r=104+v*42;g=108+v*42;b=106+v*44;}
+    else if(h<40){r=96+field*32;g=110+field*28;b=62+field*20;}
+    else if(h<240){ if(patch>.55){r=54+field*28;g=96+field*36;b=48+field*18;}else{r=122+field*30;g=124+field*24;b=74+field*22;} }
+    else if(h<620){r=84+field*32;g=92+field*32;b=58+field*20;}
+    else if(h<1200){r=104+field*36;g=86+field*24;b=66+field*18;}
+    else if(h<1750){r=126+field*28;g=114+field*24;b=108+field*22;}
+    else {r=208+field*32;g=210+field*30;b=214+field*26;}
+    const d=Math.abs(h-Math.round(h/200)*200);if(d<8){r*=.68;g*=.72;b*=.78;}
+    return [r|0,g|0,b|0];
+}
+function ensureTopoCache(){
+    if(topoCache||topoCacheBuilding)return;
+    topoCacheBuilding=true;topoRows=0;
+    const c=document.createElement('canvas');c.width=TOPO_RES;c.height=TOPO_RES;
+    topoCtx2=c.getContext('2d');topoImg=topoCtx2.createImageData(TOPO_RES,TOPO_RES);
+    function step(){
+        for(let k=0;k<14&&topoRows<TOPO_RES;k++,topoRows++){
+            for(let i=0;i<TOPO_RES;i++){
+                const x=-TOPO_RANGE+(i+.5)/TOPO_RES*TOPO_RANGE*2, z=-TOPO_RANGE+(topoRows+.5)/TOPO_RES*TOPO_RANGE*2;
+                const col=topoColor(x,z),o=(topoRows*TOPO_RES+i)*4;
+                topoImg.data[o]=col[0];topoImg.data[o+1]=col[1];topoImg.data[o+2]=col[2];topoImg.data[o+3]=255;
+            }
+        }
+        if(topoRows<TOPO_RES)requestAnimationFrame(step);
+        else{topoCtx2.putImageData(topoImg,0,0);topoCache=c;topoCacheBuilding=false;topoImg=null;topoCtx2=null;}
+    }
+    requestAnimationFrame(step);
+}
+// Wobbly organic blob polygon (villages, forest blobs) — no placeholder circles.
+function drawOrganicCircle(ctx,cx,cz,radius,seed,lobes=4){
+    ctx.beginPath();const N=22;
+    for(let i=0;i<=N;i++){const a=i/N*Math.PI*2;const rr=radius*(.82+.12*Math.sin(a*lobes+seed)+.07*Math.sin(a*(lobes*2+3)+seed*1.7));
+        const x=cx+Math.cos(a)*rr,z=cz+Math.sin(a)*rr;if(i===0)ctx.moveTo(x,z);else ctx.lineTo(x,z);}
+    ctx.closePath();
+}
+function drawForestClusterShape(ctx,f){
+    for(const b of f.blobs){drawOrganicCircle(ctx,b.x,b.z,b.r,f.seed+(b.x*.013|0),4);ctx.fill();}
+}
+
 function drawFullMap(){
     fullMapCanvas.width = window.innerWidth;
     fullMapCanvas.height = window.innerHeight;
     const ctx = fullMapCtx;
     const W = fullMapCanvas.width, H = fullMapCanvas.height;
+    ensureTopoCache();
 
-    ctx.fillStyle = '#354335';
+    ctx.fillStyle = '#2e3a2f';
     ctx.fillRect(0,0,W,H);
-    // Minimal satellite-style terrain texture: low-frequency deterministic noise.
-    const tile=220, minX=-CFG.worldSize/2, maxX=CFG.worldSize/2;
-    for(let tx=Math.floor(minX/tile); tx<=Math.ceil(maxX/tile); tx++){
-        for(let tz=Math.floor(minX/tile); tz<=Math.ceil(maxX/tile); tz++){
-            const nx=tx*tile+tile*0.5, nz=tz*tile+tile*0.5;
-            const n=fbm(nx*0.00055,nz*0.00055,3);
-            ctx.fillStyle=`rgb(${45+(n*26)|0},${58+(n*32)|0},${43+(n*21)|0})`;
-            ctx.fillRect(nx-tile/2,nz-tile/2,tile+1,tile+1);
-        }
-    }
 
     const z = mapState.zoom;
     const cx = W/2 - mapState.panX * z;
@@ -3745,16 +4619,17 @@ function drawFullMap(){
     ctx.save();
     ctx.translate(cx, cy);
     ctx.scale(z, z);
-    ctx.fillStyle='rgba(30,40,26,.72)';ctx.fillRect(-CFG.worldSize/2,-CFG.worldSize/2,CFG.worldSize,CFG.worldSize);
+    if(topoCache)ctx.drawImage(topoCache,-TOPO_RANGE,-TOPO_RANGE,TOPO_RANGE*2,TOPO_RANGE*2);
+    else ctx.fillStyle='rgba(30,40,26,.72)';if(!topoCache)ctx.fillRect(-CFG.worldSize/2,-CFG.worldSize/2,CFG.worldSize,CFG.worldSize);
     ctx.strokeStyle='rgba(85,105,78,.55)';ctx.lineWidth=Math.max(20,(CFG.mountainOuter-CFG.mountainInner)*.22);ctx.beginPath();ctx.arc(0,0,(CFG.mountainInner+CFG.mountainOuter)/2,0,Math.PI*2);ctx.stroke();
     for(const city of CITY_RECORDS){ctx.fillStyle='rgba(82,88,92,.48)';ctx.beginPath();ctx.arc(city.x,city.z,city.radius,0,Math.PI*2);ctx.fill();ctx.strokeStyle='rgba(210,214,210,.22)';ctx.lineWidth=12;ctx.stroke();ctx.fillStyle='rgba(235,238,232,.72)';ctx.font='bold 92px monospace';ctx.textAlign='center';ctx.fillText(city.name.replace(' City',''),city.x,city.z-city.radius-120);}
-    for(const t of TOWN_CENTERS){ctx.fillStyle='rgba(150,135,105,.82)';ctx.beginPath();ctx.arc(t.x,t.z,145,0,Math.PI*2);ctx.fill();}
+    for(const t of TOWN_CENTERS){ctx.fillStyle='rgba(150,135,105,.82)';drawOrganicCircle(ctx,t.x,t.z,t.organicR||150,t.seed||1,5);ctx.fill();ctx.strokeStyle='rgba(110,96,66,.5)';ctx.lineWidth=Math.max(1,3/z);ctx.stroke();}
     ctx.strokeStyle='rgba(220,220,215,.92)';ctx.lineWidth=CFG.highwayWidth*.58;for(const path of HIGHWAY_PATHS){ctx.beginPath();ctx.moveTo(path[0].x,path[0].z);for(let i=1;i<path.length;i++)ctx.lineTo(path[i].x,path[i].z);ctx.stroke();}
     for(const f of forestClusters){
         ctx.fillStyle='rgba(44,104,52,0.62)';
-        ctx.beginPath(); ctx.arc(f.x,f.z,f.r,0,Math.PI*2); ctx.fill();
+        drawForestClusterShape(ctx,f);
         ctx.strokeStyle='rgba(89,145,72,0.35)'; ctx.lineWidth=Math.max(1,2/z);
-        ctx.stroke();
+        for(const b of f.blobs){drawOrganicCircle(ctx,b.x,b.z,b.r,f.seed+(b.x*.013|0),4);ctx.stroke();}
     }
     ctx.strokeStyle='rgba(180,185,190,.42)';ctx.lineWidth=Math.max(2,CFG.roadWidth*.18);for(const e of HIGHWAY_EXITS){ctx.beginPath();ctx.arc(e.x,e.z,42,0,Math.PI*2);ctx.stroke();}
 
@@ -4226,7 +5101,14 @@ document.getElementById('settings-apply').addEventListener('click', ()=>{
     const tod = parseFloat(document.getElementById('time-slider').value);
     applyTimeOfDay(tod);
     applyGraphicsMode(gfx);
-    while(npcs.length < npcCount) spawnNPC(false, Math.random() < 0.4);
+    while(npcs.length < npcCount){
+        // Maintain the population mix as the count is multiplied.
+        const enemies=npcs.reduce((a,n)=>a+(n.userData.isEnemy?1:0),0);
+        const cops=npcs.reduce((a,n)=>a+(n.userData.isCop?1:0),0);
+        if(enemies < npcCount*.24) spawnNPC(false,true);
+        else if(cops < npcCount*.07) spawnNPC(true,false);
+        else spawnNPC(false,false);
+    }
     while(npcs.length > npcCount){
         const n = npcs.pop();
         if(n.parent) scene.remove(n);
@@ -4346,6 +5228,7 @@ async function init(){
             ['enemies', () => { for(let i=0;i<CFG.enemyCount;i++) spawnNPC(false,true); }],
             ['cops', () => { for(let i=0;i<CFG.copCount;i++) spawnNPC(true,false); }],
             ['cars', () => { for(let i=0;i<CFG.carCount;i++) spawnCar(); for(let i=0;i<6;i++) spawnMotorbike(); }],
+            ['highway traffic', () => spawnHighwayTraffic(VERY_LOW_MEM?10:DECENT_GPU?48:26)],
             ['aircraft', () => {
                 for(let i=0;i<CFG.helicopterCount;i++) spawnHelicopter(undefined,undefined,'utility',i%2===0);
                 spawnHelicopter(undefined,undefined,'gunship',true);
@@ -4357,7 +5240,7 @@ async function init(){
             }],
             ['pickups', () => { for(let i=0;i<CFG.pickupCount;i++) spawnPickup(); for(let i=0;i<CFG.heartCount;i++) spawnHeart(); for(let i=0;i<CFG.ammoPackCount;i++) spawnAmmoPack(); }],
             ['weapons', () => { createGun(); updateWeaponUI(); }],
-            ['hud', () => { updateHUD(); updateMapUI(); }]
+            ['hud', () => { updateHUD(); updateMapUI(); const sl=document.getElementById('enemy-slider');if(sl){sl.value=npcs.length;document.getElementById('enemy-val').textContent=npcs.length;} }]
         ];
         const bootWarnings = [];
         for(const [name,step] of bootSteps){
@@ -4407,8 +5290,9 @@ function updateForestLOD(playerPos){
     if(forestRoadStamp!==stamp){for(const t of forestTrees)if(!t.userData.dead&&!naturePointIsClear(t.position.x,t.position.z,3)){t.userData.dead=true;t.userData.natureBlocked=true;setTreeInstanceVisible(t,false);}forestRoadStamp=stamp;}
     if(forestLastPosition.distanceToSquared(playerPos)<6400&&forestRenderDistance===CFG.renderDistance)return;
     forestLastPosition.copy(playerPos);forestRenderDistance=CFG.renderDistance;
-    const far=Math.min(CFG.renderDistance,VERY_LOW_MEM?2000:3600)+453;
-    for(const chunk of forestChunks.values()){const d=Math.hypot(chunk.x-playerPos.x,chunk.z-playerPos.z);chunk.near.visible=d<750;chunk.far.visible=d>=750&&d<far;}
+    const far=(VERY_LOW_MEM?CFG.renderDistance*.5:Math.min(CFG.renderDistance*.64,9200))+453;
+    for(const chunk of forestChunks.values()){const d=Math.hypot(chunk.x-playerPos.x,chunk.z-playerPos.z);const nearOn=d<750,farOn=d>=750&&d<far;
+        for(let sp=0;sp<TREE_SPECIES_COUNT;sp++){chunk.near[sp].visible=nearOn;chunk.far[sp].visible=farOn;}}
 }
 
 
@@ -4472,6 +5356,7 @@ function animate(){
     } else shakeAmount = 0;
 
     updatePooledEffects(dt);
+    if(realismFX)realismFX.update(dt);
     updateQueuedExplosionGameplay(dt);
 
     for(let i = activeBlasts.length - 1; i >= 0; i--){
@@ -4814,7 +5699,7 @@ function animate(){
         updateJetFlight(j,dt);
         if(currentVehicle===j){
             updateFlightHUD(j,dt);
-            if(!missileView) camera.position.copy(j.userData.camPos);
+            if(!missileView){ camera.position.copy(j.userData.camPos); stallBuffet(j,dt); }
         }
     }
 
@@ -4911,10 +5796,9 @@ function animate(){
         if(ud.state === 'walk' || ud.state === 'patrol' || ud.state === 'chase'){
             if(!ud.target){
                 if(ud.isEnemy || ud.isCop){
-                    const wp = sidewalkWaypoints[Math.floor(Math.random()*sidewalkWaypoints.length)];
-                    ud.target = { x: wp.x, z: wp.z };
+                    ud.target = pickPatrolTarget();
                 } else {
-                    const tt = pickBuildingDestination();
+                    const tt = pickResidentialDestination();
                     if(tt) ud.target = tt;
                 }
             }
@@ -4926,13 +5810,12 @@ function animate(){
                 if(dist < arriveDist){
                     if(ud.isEnemy || ud.isCop){
                         if(ud.state === 'patrol'){
-                            ud.patrolIndex = Math.floor(Math.random()*sidewalkWaypoints.length);
-                            const wp = sidewalkWaypoints[ud.patrolIndex];
-                            ud.target = { x: wp.x, z: wp.z };
+                            ud.target = pickPatrolTarget();
                         }
                     } else {
+                        // Loitering outside a residential/commercial structure.
                         ud.state = 'wait';
-                        ud.waitTime = 1.5 + Math.random()*2.5;
+                        ud.waitTime = 4 + Math.random()*12;
                         ud.target = null;
                     }
                 } else {
@@ -4964,8 +5847,12 @@ function animate(){
             }
         } else if(ud.state === 'wait'){
             ud.waitTime -= dt;
+            // Idle loiter: glance around occasionally instead of standing frozen.
+            if(Math.random() < dt*0.5) n.rotation.y += (Math.random()-.5)*0.9;
             if(ud.waitTime <= 0){
-                const tt = pickBuildingDestination();
+                let tt;
+                if(fieldWaypoints.length && Math.random()<.18){const wp=fieldWaypoints[(Math.random()*fieldWaypoints.length)|0];tt={x:wp.x,z:wp.z};}
+                else tt = pickResidentialDestination();
                 if(tt){ ud.target = tt; ud.state = 'walk'; }
                 else { ud.waitTime = 1.5; }
             }
@@ -4988,7 +5875,7 @@ function animate(){
     for(let i = 0; i < cars.length; i++){
         const c = cars[i];
         if(!c.parent || !c.userData.ai.active) continue;
-        if(c.position.distanceToSquared(cwp) > 200*200) continue;
+        if(c.position.distanceToSquared(cwp) > 480*480) continue;
         if(activeCars++ >= CFG.maxActiveCars) continue;
         const ai = c.userData.ai;
         ai.turnTimer -= dt;
@@ -5002,6 +5889,7 @@ function animate(){
         c.position.x = Math.min(half5, Math.max(-half5, c.position.x));
         c.position.z = Math.min(half5, Math.max(-half5, c.position.z));
     }
+    updateHighwayTraffic(dt);
 
     if(isFiring && controls.isLocked && !isDead && !parachuteActive){
         if(mode === 'jet'){
@@ -5049,18 +5937,25 @@ const performanceBudget={target:60,scale:.82,maxScale:.9,minScale:.48,elapsed:0,
 function budgetPixelRatio(){const maxPixels=VERY_LOW_MEM?650000:LOW_MEM?1100000:1800000;return Math.min(window.devicePixelRatio||1,performanceBudget.scale,Math.sqrt(maxPixels/Math.max(1,innerWidth*innerHeight)));}
 function disposeComposer(){if(composer){for(const p of composer.passes)p.dispose?.();composer.dispose();}composer=null;renderPass=null;bloomPass=null;outputPass=null;gradePass=null;ssaoPass=null;}
 function applyGraphicsMode(mode){
-    currentGfxMode=mode;const max={battery:.62,low:.75,medium:.90,high:1,ultra:1.05,cinematic:1.05,rtx:.90}[mode]||.85;
-    performanceBudget.maxScale=Math.min(max,LOW_MEM?.9:1.1);performanceBudget.scale=Math.min(.86,performanceBudget.maxScale);performanceBudget.slow=performanceBudget.fast=0;
-    // Shadow maps/post-processing are deliberately disabled on the target 2–8GB tier.
-    // Sun + hemisphere lighting, procedural contact shading and roughness remain available.
-    disposeComposer();const shadows=!LOW_MEM&&mode!=='battery'&&mode!=='low';
-    renderer.shadowMap.enabled=shadows;renderer.shadowMap.type=THREE.BasicShadowMap;sun.castShadow=shadows;
-    sun.shadow.mapSize.set(512,512);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null;}
+    currentGfxMode=mode;const max={battery:.62,low:.78,medium:.95,high:1,ultra:1.08,cinematic:1.08,rtx:.92}[mode]||.85;
+    performanceBudget.maxScale=Math.min(max,LOW_MEM?.9:1.12);performanceBudget.scale=Math.min(.9,performanceBudget.maxScale);performanceBudget.slow=performanceBudget.fast=0;
+    disposeComposer();
+    // Long-view clarity tiers: battery/low stay lean, medium up gets post FX.
+    const rd=VERY_LOW_MEM?4400:{battery:5000,low:5800,medium:8400,high:11200,ultra:13600,cinematic:15200,rtx:14200}[mode]||6500;
+    const dd=VERY_LOW_MEM?2600:{battery:3000,low:3800,medium:5600,high:7600,ultra:9400,cinematic:11200,rtx:10200}[mode]||4200;
+    CFG.renderDistance=rd;CFG.detailDistance=dd;CFG.cullDistance=rd;
+    const shadows=(mode==='ultra'||mode==='cinematic'||mode==='rtx'||(DECENT_GPU&&mode!=='battery'&&mode!=='low'))&&!VERY_LOW_MEM;
+    renderer.shadowMap.enabled=shadows;
+    renderer.shadowMap.type=(mode==='rtx'||mode==='cinematic')?THREE.PCFSoftShadowMap:THREE.BasicShadowMap;sun.castShadow=shadows;
+    const sm=mode==='rtx'?2048:mode==='cinematic'?2048:mode==='ultra'?1024:mode==='high'?1024:512;
+    sun.shadow.mapSize.set(sm,sm);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null;}
     scene.environment=pmremRT?pmremRT.texture:null;
-    CFG.renderDistance=VERY_LOW_MEM?4600:mode==='battery'?5000:6500;CFG.cullDistance=CFG.renderDistance;
-    scene.fog.near=CFG.renderDistance*.25;scene.fog.far=CFG.renderDistance;resizeRenderer();
+    scene.fog.near=rd*.25;scene.fog.far=rd;
+    if(['high','ultra','cinematic','rtx'].includes(mode)&&!VERY_LOW_MEM)buildComposer(mode);
+    resizeRenderer();
+    if(realismFX)realismFX.setFogFar(rd);
 }
-function resizeRenderer(){camera.aspect=innerWidth/innerHeight;camera.near=.12;camera.far=CFG.renderDistance+800;camera.updateProjectionMatrix();renderer.setPixelRatio(budgetPixelRatio());renderer.setSize(innerWidth,innerHeight);}
+function resizeRenderer(){camera.aspect=innerWidth/innerHeight;camera.near=.12;camera.far=Math.max(CFG.renderDistance+800,20500);camera.updateProjectionMatrix();renderer.setPixelRatio(budgetPixelRatio());renderer.setSize(innerWidth,innerHeight);if(composer)composer.setSize(innerWidth,innerHeight);}
 function updatePerformanceBudget(rawMs){
     if(!Number.isFinite(rawMs)||rawMs<=0||rawMs>1000)return;
     const p=performanceBudget;p.times[p.cursor++%120]=rawMs;p.samples=Math.min(120,p.samples+1);p.elapsed+=rawMs;p.frames++;
@@ -5069,7 +5964,8 @@ function updatePerformanceBudget(rawMs){
     if(p.auto&&p.slow>=2&&p.scale>p.minScale){p.scale=Math.max(p.minScale,p.scale-.08);p.slow=0;resizeRenderer();}
     else if(p.auto&&p.fast>=7&&p.scale<p.maxScale){p.scale=Math.min(p.maxScale,p.scale+.04);p.fast=0;resizeRenderer();}
     worldNature.grassBudget=p.fps<45?20:48;worldNature.generationBudgetMs=p.fps<40?1.2:2.2;
-    CFG.maxActiveNPCs=p.fps<45?20:40;CFG.maxActiveCars=p.fps<45?10:20;
+    CFG.maxActiveNPCs=VERY_LOW_MEM?(p.fps<45?18:28):LOW_MEM?(p.fps<45?34:52):(p.fps<45?50:78);
+    CFG.maxActiveCars=VERY_LOW_MEM?(p.fps<45?8:14):LOW_MEM?(p.fps<45?18:26):(p.fps<45?28:42);
     fpsCounterEl.textContent=Math.round(p.fps)+' FPS · '+Math.round(budgetPixelRatio()*100)+'%';fpsCounterEl.title='Measured frame rate · internal resolution. P95 '+p.p95.toFixed(1)+' ms. Target 60 FPS, hardware dependent.';
     p.elapsed=0;p.frames=0;
 }
@@ -5078,7 +5974,7 @@ function gameDiagnostics(){return {
     memory:renderer.info.memory,jsHeapMB:performance.memory?Math.round(performance.memory.usedJSHeapSize/1048576):null,
     buildings:buildings.length,buildingChunks:buildingRender.meshes.length,damageQueue:damageQueue.length,debris:debrisPanels.length,
     terrainTiles:worldNature.tiles.length,activeTiles:worldNature.active.size,pendingTiles:worldNature.pending?.jobs.length||0,
-    roadSegments:surfaceWorld.segments.length,roadMeshes:0,terrainOpaque:worldNature.tiles.every(t=>!t.mesh.material.transparent&&t.mesh.material.opacity===1&&t.mesh.material.depthWrite),effects:pooledEffectsStats()
+    roadSegments:surfaceWorld.segments.length,roadMeshes:0,terrainOpaque:worldNature.tiles.every(t=>!t.mesh.material.transparent&&t.mesh.material.opacity===1&&t.mesh.material.depthWrite),effects:pooledEffectsStats(),realism:realismFX?realismFX.stats():null,highwayTraffic:highwayCars.length,trees:forestTrees.length,npcs:npcs.length
 };}
 window.CityStrike={stats:gameDiagnostics};
 // Opt-in local diagnostics only; no telemetry, fetches, or game state upload.
@@ -5088,7 +5984,8 @@ if(new URLSearchParams(location.search).has('test'))Object.assign(window.CityStr
     blast:(x,y,z,type='rocket')=>createExplosion(new THREE.Vector3(x,y,z),type),
     damage:(rec,x,y,z,r=50)=>damageBuilding(rec,new THREE.Vector3(x,y,z),r),
     resetFX:()=>pooledEffects.reset(),
-    tick:(dt)=>{updateQueuedExplosionGameplay(dt);updatePooledEffects(dt);updateDebrisPanels(dt);},
+    tick:(dt)=>{updateQueuedExplosionGameplay(dt);updatePooledEffects(dt);if(realismFX)realismFX.update(dt);updateDebrisPanels(dt);},
+    realism:()=>realismFX&&realismFX.stats(),
     burst:(x,y,z,count=400)=>{for(let i=0;i<count;i++)spawnParticle({pos:new THREE.Vector3(x,y,z),size:2,color:0x777777,life:2,opacity:.2,fluid:true,buoyancy:.3});},
     quality:applyGraphicsMode
 });
@@ -5097,10 +5994,10 @@ renderer.domElement.addEventListener('webglcontextrestored',()=>location.reload(
 document.addEventListener('visibilitychange',()=>{prevTime=performance.now();releaseMovementInput();});
 
 function updatePopulationLOD(playerPos){
- const npcd=VERY_LOW_MEM?180:320;for(const n of npcs){if(!n.userData.dead)n.visible=n.position.distanceToSquared(playerPos)<npcd*npcd;}
- for(const c of cars)c.visible=c===currentVehicle||c.position.distanceToSquared(playerPos)<1000*1000;
- for(const h of helicopters)h.visible=h===currentVehicle||h.position.distanceToSquared(playerPos)<2800*2800;
- for(const j of jets)j.visible=j===currentVehicle||j.position.distanceToSquared(playerPos)<4000*4000;
+ const npcd=VERY_LOW_MEM?200:LOW_MEM?420:620;for(const n of npcs){if(!n.userData.dead)n.visible=n.position.distanceToSquared(playerPos)<npcd*npcd;}
+ const card=VERY_LOW_MEM?1600:LOW_MEM?2600:3400;for(const c of cars)c.visible=c===currentVehicle||c.position.distanceToSquared(playerPos)<card*card;
+ for(const h of helicopters)h.visible=h===currentVehicle||h.position.distanceToSquared(playerPos)<3400*3400;
+ for(const j of jets)j.visible=j===currentVehicle||j.position.distanceToSquared(playerPos)<7000*7000;
  for(const item of pickups){const mesh=item.mesh||item;if(mesh.position)mesh.visible=mesh.position.distanceToSquared(playerPos)<500*500;}
 }
 
