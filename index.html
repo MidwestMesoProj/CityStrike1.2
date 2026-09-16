@@ -207,7 +207,7 @@ body{overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:#1a2
 <div id="flight-hud"><strong id="flight-values"></strong><small>W/S throttle · A/D bank / taxi<br>Space nose up · Shift nose down · X boost<br>Takeoff: full throttle, then Space above 60 m/s.<br>Stall: lower nose, add power. E exit · P parachute</small></div>
 <div id="touch-controls"><div id="touch-look">DRAG TO LOOK</div><div id="touch-move"><span></span><button data-key="KeyW">W</button><span></span><button data-key="KeyA">A</button><button data-key="KeyS">S</button><button data-key="KeyD">D</button></div><div id="touch-actions"><button data-key="Space">UP</button><button data-key="ShiftLeft">DOWN</button><button data-key="KeyE">ENTER</button><button data-key="KeyX">BOOST</button><button data-key="KeyC">2.5x</button><button data-key="KeyF">6x</button><button data-key="KeyP">CHUTE</button><button data-key="KeyB">BOMB</button><button data-key="Fire">FIRE</button></div></div>
 <div id="minimap-container"><canvas id="minimap" width="150" height="150"></canvas></div>
-<div id="controls-hint">WASD · SHIFT sprint/descend · SPACE jump/ascend/car brake · JET: W/S throttle, A/D bank, SPACE/SHIFT pitch · X boost · C 2.5x · F 6x · B bomb · H aircraft-enter · CLICK shoot · SCROLL switch · 1-0 weapons · E enter/exit · T teleport · P parachute · M map · TAB shop · K/O settings · V jetpack · SHIFT+/ ammo cheat</div>
+<div id="controls-hint">WASD · SHIFT sprint/descend · SPACE jump/ascend/car brake · JET: W/S throttle, A/D bank, SPACE/SHIFT pitch · X boost · C 2.5x · F 6x · B bomb · H aircraft-enter · CLICK shoot · SCROLL switch · 1-0 weapons · [ ] Cluster/Thermo · J camera · E enter/exit · T teleport · P parachute · M map · TAB shop · K/O settings · V jetpack · SHIFT+/ ammo cheat</div>
 <div id="settings-btn" title="Settings (O)">⚙</div>
 <div id="store-btn">$ SHOP</div>
 <div id="shop-panel">
@@ -226,17 +226,21 @@ body{overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:#1a2
 <div class="shop-item" data-item="bomber"><div>✈ Bomber</div><div class="price">$800</div></div>
 <div class="shop-item" data-item="stealth"><div>✈ Stealth</div><div class="price">$1000</div></div>
 <div class="shop-item" data-item="hypersonic"><div>✈ Hypersonic</div><div class="price">$1400</div></div>
+<div class="shop-item" data-item="airliner"><div>✈̶ Airliner</div><div class="price">$1300</div></div>
+<div class="shop-item" data-item="drone"><div>🛸 Quadcopter Drone</div><div class="price">$450</div></div>
 <div class="shop-item" data-item="scatter"><div>✦ Scatter Missile</div><div class="price">$75</div></div>
 <div class="shop-item" data-item="fastmissile"><div>✦ Fast Missile</div><div class="price">$300</div></div>
 <div class="shop-item" data-item="napalm"><div>✦ Napalm Missile</div><div class="price">$600</div></div>
 <div class="shop-item" data-item="moab"><div>☢ MOAB</div><div class="price">$1800</div></div>
+<div class="shop-item" data-item="cluster"><div>✦ Cluster Missile [ ]</div><div class="price">$250</div></div>
+<div class="shop-item" data-item="thermobaric"><div>✦ Thermobaric [ ]</div><div class="price">$1200</div></div>
 <div class="shop-item" data-item="nuke"><div>☢ Tactical Nuke</div><div class="price">$2500</div></div>
 </div>
 <button class="settings-btn primary" id="shop-close">CLOSE</button>
 </div>
 <div id="settings-panel">
 <h2>⚙ SETTINGS</h2>
-<div class="settings-group"><label>Quality ceiling · auto 60 FPS</label><select id="gfx-select"><option value="battery">Battery Saver</option><option value="low">Performance</option><option value="medium" selected>Balanced</option><option value="high">High</option><option value="ultra">Ultra</option><option value="cinematic">Cinematic</option><option value="rtx">RTX-Style</option></select></div>
+<div class="settings-group"><label>Graphics quality (explicit · 4K = locked native res)</label><select id="gfx-select"><option value="battery">Battery Saver</option><option value="low">Performance</option><option value="medium" selected>Balanced</option><option value="high">High</option><option value="ultra">Ultra</option><option value="cinematic">Cinematic</option><option value="rtx">RTX-Style</option><option value="4k">4K Ultra — max sharpness</option></select></div>
 <div class="settings-group"><label>Time of day</label><input type="range" id="time-slider" min="0" max="24" step="0.1" value="14"><span id="time-val">14:00</span></div>
 <div class="settings-group"><label>Difficulty</label><select id="diff-select"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select></div>
 <div class="settings-group"><label>Speed</label><input type="range" id="speed-slider" min="200" max="700" value="420"><span id="speed-val">420</span></div>
@@ -274,10 +278,11 @@ import { Sky } from 'three/addons/objects/Sky.js';
 
 // ─── CONFIG ───
 const CFG = {
-    worldSize:64000, citySize:64000, blockSize:280, roadWidth:32, highwayWidth:76, shoulderWidth:9,
+    worldSize:128000, citySize:128000, blockSize:280, roadWidth:32, highwayWidth:76, shoulderWidth:9,
     downtownRadius:1900, innerUrbanRadius:3150, mixedUrbanRadius:4300, suburbRadius:5600, roadZoneRadius:6000, cityRadius:6100, townRadius:620,
-    bumpStartRadius:23500, ruralBumpHeight:13, mountainInner:30000, mountainOuter:43000,
-    cityCount:4, townCount:48, farmCount:72, npcCount:980, enemyCount:280, copCount:120, carCount:180, helicopterCount:24,
+    largeTownRadius:980, smallTownRadius:560,
+    bumpStartRadius:50000, ruralBumpHeight:13, mountainInner:60000, mountainOuter:82000,
+    cityCount:9, largeTownCount:18, smallTownCount:42, townCount:60, farmCount:96, npcCount:980, enemyCount:280, copCount:120, carCount:180, helicopterCount:24,
     pickupCount:48, heartCount:22, ammoPackCount:88, portalCount:0, renderDistance:10500, fogNear:1650, shadowMapSize:1024,
     maxParticles:850, forestClusterCount:42, forestTreesPerCluster:38, batchCell:2600, maxActiveNPCs:110, maxSimDistance:190, farNPCUpdateInterval:20,
     maxActiveCars:36, maxActiveHelicopters:8, maxActiveJets:3, cullDistance:11500
@@ -303,20 +308,26 @@ if(VERY_LOW_MEM){
 // Dense, living-world defaults. navigator.deviceMemory is capped at 8 by browsers,
 // so core count separates desktop-class machines from integrated/mobile devices.
 const DECENT_GPU = DEVICE_MEM >= 8 && (navigator.hardwareConcurrency || 4) >= 8;
-CFG.npcCount=VERY_LOW_MEM?90:LOW_MEM?(DECENT_GPU?340:220):260;
-CFG.enemyCount=VERY_LOW_MEM?20:LOW_MEM?(DECENT_GPU?96:60):70;
-CFG.copCount=VERY_LOW_MEM?12:(DECENT_GPU?44:26);
-CFG.carCount=VERY_LOW_MEM?28:(DECENT_GPU?132:84);CFG.helicopterCount=VERY_LOW_MEM?6:10;
-CFG.farmCount=VERY_LOW_MEM?20:(DECENT_GPU?72:44);CFG.townCount=VERY_LOW_MEM?24:(DECENT_GPU?48:32);
-CFG.forestClusterCount=VERY_LOW_MEM?26:(DECENT_GPU?64:48);
-CFG.forestTreesPerCluster=VERY_LOW_MEM?20:(DECENT_GPU?52:34);
+// Populations are placed per-settlement at boot (120/city, 40/large town,
+// 10/small town, 200 dispersed); these values only seed the manual slider.
+CFG.npcCount=VERY_LOW_MEM?400:DECENT_GPU?1700:1100;
+CFG.enemyCount=VERY_LOW_MEM?60:300;
+CFG.copCount=VERY_LOW_MEM?30:90;
+CFG.carCount=VERY_LOW_MEM?40:(DECENT_GPU?200:130);CFG.helicopterCount=VERY_LOW_MEM?8:14;
+CFG.farmCount=VERY_LOW_MEM?28:96;
+CFG.largeTownCount=VERY_LOW_MEM?8:18;CFG.smallTownCount=VERY_LOW_MEM?16:42;CFG.townCount=CFG.largeTownCount+CFG.smallTownCount;
+CFG.forestClusterCount=VERY_LOW_MEM?44:(DECENT_GPU?150:96);
+CFG.forestTreesPerCluster=VERY_LOW_MEM?90:(DECENT_GPU?540:300);
 CFG.maxActiveNPCs=VERY_LOW_MEM?28:(DECENT_GPU?78:52);CFG.maxSimDistance=VERY_LOW_MEM?170:(DECENT_GPU?270:215);
 CFG.maxActiveCars=VERY_LOW_MEM?14:(DECENT_GPU?42:26);CFG.batchCell=VERY_LOW_MEM?1536:2600;
 CFG.detailDistance=0;
-const CITY_CENTERS=[
-    {id:'nw',name:'Northwest City',x:-15500,z:-13500},{id:'ne',name:'Northeast City',x:15500,z:-13500},
-    {id:'sw',name:'Southwest City',x:-15500,z:13500},{id:'se',name:'Southeast City',x:15500,z:13500}
-];
+// deviceMemory is capped at 8 by browsers, so cores decide the full-fidelity tier.
+const CITY_CENTERS=(()=>{
+    const out=[],spacing=33000,names=['North','Northeast','East','Southeast','South','Southwest','West','Northwest','Central'];
+    const spots=[[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,0]];
+    for(let i=0;i<spots.length;i++){const [gx,gz]=spots[i];out.push({id:'c'+i,name:names[i]+' City',x:gx*spacing,z:gz*spacing});}
+    return out;
+})();
 const TOWN_CENTERS=[],HIGHWAY_PATHS=[],HIGHWAY_EXITS=[],CITY_RECORDS=[];
 
 const WEAPONS = [
@@ -330,6 +341,8 @@ const WEAPONS = [
     { name:'Fast Msl',damage:350,  reloadTime:3.0,  auto:false, color:0x60c0ff, ammo:10,   recoil:3.0, projectile:true, speed:450.0, gravity:0.4, blastType:'fastMissile', launchDelay:0 },
     { name:'Napalm',  damage:280,  reloadTime:12.0, auto:false, color:0xff7722, ammo:8,    recoil:3.4, projectile:true, speed:120.0, gravity:1.4, blastType:'heavyMissile',  launchDelay:0 },
     { name:'MOAB',    damage:1400, reloadTime:20.0, auto:false, color:0xffcc44, ammo:4,    recoil:6.5, projectile:true, speed:168.0, gravity:5.0, blastType:'moab',    launchDelay:2.0 },
+    { name:'Cluster', damage:110,  reloadTime:7.0,  auto:false, color:0xffc040, ammo:6,    recoil:4.0, projectile:true, speed:300.0, gravity:1.2, blastType:'cluster',    launchDelay:0 },
+    { name:'Thermo',  damage:650,  reloadTime:14.0, auto:false, color:0xff5a26, ammo:5,    recoil:5.0, projectile:true, speed:200.0, gravity:2.0, blastType:'thermobaric', launchDelay:0 },
 ];
 
 const JET_MINIGUN = { name:'Minigun', damage:200, reloadTime:0.5, auto:true, color:0xffaa40, hitscan:true };
@@ -340,6 +353,7 @@ const JET_PRESETS = {
     bomber:      { color: 0x4a5a3a, speed: 360,  shininess: 30,  scale: 1.55 },
     stealth:     { color: 0x1a1e24, speed: 540,  shininess: 15,  scale: 1.05 },
     hypersonic:  { color: 0xd0d8e0, speed: 1350, shininess: 120, scale: 0.75 },
+    airliner:    { color: 0xeef1f4, speed: 300,  shininess: 95,  scale: 1.7 },
 };
 
 const EXPLOSIONS = {
@@ -353,6 +367,8 @@ const EXPLOSIONS = {
     napalm:      { radius:125.0, damage:280,  fireballCount:22, fireballColors:[0xfff0aa,0xffcc44,0xff8800,0xff4400], fireballSize:1.5, hazeLife:2.8, hazeColor:0x332211, hazeOpacity:.14, scorch:true },
     heavyMissile:{ radius:300.0, damage:750,  fireballCount:40, fireballColors:[0xffffff,0xbbddff,0x66aaff], fireballSize:1.4, hazeLife:3.0, hazeColor:0x445566, hazeOpacity:.03, scorch:true },
     moab:        { radius:405.0, damage:1400, fireballCount:36, fireballColors:[0xffffff,0xfff0a0,0xffbb44,0xff6622], fireballSize:4.0, hazeLife:5.0, hazeColor:0x443a2a, hazeOpacity:.12, scorch:true },
+    cluster:     { radius:16.0,  damage:90,  fireballCount:6,  fireballColors:[0xffffff,0xffe0a0,0xffaa44], fireballSize:0.6, hazeLife:1.0, hazeColor:0x776655, hazeOpacity:.04, scorch:true },
+    thermobaric: { radius:220.0, damage:650, fireballCount:34, fireballColors:[0xffffff,0xffdd88,0xff8833,0xff5018], fireballSize:2.7, hazeLife:4.2, hazeColor:0x3a2c20, hazeOpacity:.12, scorch:true },
 };
 
 
@@ -414,13 +430,13 @@ function ruralBumpAt(x, z){
 }
 function terrainHeightAt(x, z){
     let distance=Infinity;for(const c of CITY_CENTERS)distance=Math.min(distance,Math.hypot(x-c.x,z-c.z));
-    let flat=natureSmooth(CFG.cityRadius+320,CFG.cityRadius+2520,distance);if(!flat)return 0;for(const town of TOWN_CENTERS)flat=Math.min(flat,natureSmooth(440,950,Math.hypot(x-town.x,z-town.z)));if(!flat)return 0;
+    let flat=natureSmooth(CFG.cityRadius+320,CFG.cityRadius+2520,distance);if(!flat)return 0;for(const town of TOWN_CENTERS){const tr=town.radius||CFG.townRadius;flat=Math.min(flat,natureSmooth(tr-80,tr+620,Math.hypot(x-town.x,z-town.z)));}if(!flat)return 0;
     const wx=x+(fbm(x*.00012+11,z*.00012,2)-.5)*1800,wz=z+(fbm(x*.00012,z*.00012+37,2)-.5)*1800;
     return flat*(ruralBumpAt(wx,wz)+mountainHeightAt(wx,wz));
 }
 
 // Camera-centered clip rings: 16 inner tiles, then six 12-tile rings, 8-512m samples.
-const worldNature={tiles:[],active:new Map(),pending:null,signature:'',center:new THREE.Vector3(),time:{value:0},generationBudgetMs:2.5,maxRowsPerFrame:160,grassBudget:64,grass:null,clouds:[]};
+const worldNature={tiles:[],active:new Map(),pending:null,signature:'',center:new THREE.Vector3(),time:{value:0},generationBudgetMs:2.5,maxRowsPerFrame:160,grassBudget:140,grass:null,clouds:[]};
 function getNatureNoise(){
     if(worldNature.noise)return worldNature.noise;
     const n=128,data=new Uint8Array(n*n*4);
@@ -452,25 +468,64 @@ function createRoadPath(points,width){for(let i=1;i<points.length;i++)createRoad
 function roadClearAt(x,z,pad=0){const S=surfaceWorld.cellSize,near=surfaceWorld.roadCells.get(Math.floor(x/S)+':'+Math.floor(z/S));if(near)for(const r of near)if(natureSegmentDistance(x,z,r.ax,r.az,r.bx,r.bz)<r.width*.5+pad+3)return false;return true;}
 function naturePointIsClear(x,z,pad=1){return roadClearAt(x,z,pad)&&!pointIsBlocked(x,z,pad);}
 function buildIrregularRoadNetwork(){
-    // Connected local streets, collectors and rounded ring boulevards. All share the ground shader.
+    // Grid streets plus diagonal boulevards, two ring roads and varied road
+    // widths — every city gets a diverse, connected network.
     for(const c of CITY_CENTERS){const r=CFG.roadZoneRadius,bs=CFG.blockSize;
-        for(let k=-r;k<=r;k+=bs){const extent=Math.sqrt(Math.max(0,CFG.cityRadius**2-k*k)),width=((Math.round((k+r)/bs)%4)===0)?40:24;
+        for(let k=-r;k<=r;k+=bs){const extent=Math.sqrt(Math.max(0,CFG.cityRadius**2-k*k)),major=((Math.round((k+r)/bs)%4)===0),width=major?40:24;
             createRoadSegment(c.x-extent,c.z+k,c.x+extent,c.z+k,width);createRoadSegment(c.x+k,c.z-extent,c.x+k,c.z+extent,width);}
-        const p=[];for(let i=0;i<=48;i++){const a=i/48*Math.PI*2;p.push({x:c.x+Math.cos(a)*(CFG.cityRadius-100),z:c.z+Math.sin(a)*(CFG.cityRadius-100)});}createRoadPath(p,40);
+        // X-shaped diagonal boulevards.
+        for(const dir of [[1,1],[1,-1]]){const dx=dir[0]/Math.SQRT2,dz=dir[1]/Math.SQRT2,px=-dz,pz=dx;
+            for(let off=-r*.8;off<=r*.8;off+=bs*4){const h=Math.sqrt(Math.max(0,(CFG.cityRadius-160)**2-off*off));
+                createRoadSegment(c.x+px*off-dx*h,c.z+pz*off-dz*h,c.x+px*off+dx*h,c.z+pz*off+dz*h,44);}}
+        const ring=(rad,width,n=56)=>{const p=[];for(let i=0;i<=n;i++){const a=i/n*Math.PI*2;p.push({x:c.x+Math.cos(a)*rad,z:c.z+Math.sin(a)*rad});}createRoadPath(p,width);};
+        ring(CFG.cityRadius-100,40); ring(Math.round((CFG.downtownRadius+CFG.innerUrbanRadius)/2),36);
     }
 }
 function buildHighwayNetwork(){
-    const routes=[ [{x:-33000,z:0},{x:-23000,z:-1000},{x:-10000,z:0},{x:0,z:0},{x:10000,z:0},{x:23000,z:1000},{x:33000,z:0}], [{x:0,z:-33000},{x:700,z:-21000},{x:0,z:-10000},{x:0,z:0},{x:0,z:10000},{x:-700,z:21000},{x:0,z:33000}] ];
-    for(const p of routes){HIGHWAY_PATHS.push(p);createRoadPath(p,CFG.highwayWidth);}
-    for(const c of CITY_CENTERS){const south=c.z>0,edge={x:c.x,z:c.z+(south?-1:1)*(CFG.cityRadius-100)},mid={x:c.x+(c.x>0?-1700:1700),z:c.z*.36},junction={x:c.x*.8,z:0};const p=[edge,mid,junction];HIGHWAY_PATHS.push(p);createRoadPath(p,52);HIGHWAY_EXITS.push({...edge,city:c.id,id:'exit-'+c.id});}
+    const cross=58000;
+    // Cross-country horizontal + vertical interstates.
+    const h=[{x:-cross,z:0},{x:-cross*.55,z:700},{x:0,z:0},{x:cross*.55,z:-700},{x:cross,z:0}];
+    const v=[{x:0,z:-cross},{x:-700,z:-cross*.55},{x:0,z:0},{x:700,z:cross*.55},{x:0,z:cross}];
+    HIGHWAY_PATHS.push(h,v);createRoadPath(h,CFG.highwayWidth);createRoadPath(v,CFG.highwayWidth);
+    // Ring interstate around the eight outer cities, bowed outward between them.
+    const order=[[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1]];
+    const ring=order.map(([gx,gz])=>({x:gx*33000,z:gz*33000}));
+    for(let i=0;i<ring.length;i++){const a=ring[i],b=ring[(i+1)%ring.length],mx=(a.x+b.x)/2,mz=(a.z+b.z)/2,ml=Math.hypot(mx,mz)||1;
+        const p=[a,{x:mx+mx/ml*2800,z:mz+mz/ml*2800},b];HIGHWAY_PATHS.push(p);createRoadPath(p,52);}
+    // Every city gets a connector from its inward edge toward the network core.
+    for(const c of CITY_CENTERS){const dl=Math.hypot(c.x,c.z)||1,ux=-c.x/dl,uz=-c.z/dl;
+        const edge={x:c.x+ux*(CFG.cityRadius-60),z:c.z+uz*(CFG.cityRadius-60)};
+        const j1={x:c.x+ux*(CFG.cityRadius+1800)+uz*900,z:c.z+uz*(CFG.cityRadius+1800)-ux*900};
+        const end={x:c.x*.42,z:c.z*.42};
+        const p=[edge,j1,end];HIGHWAY_PATHS.push(p);createRoadPath(p,52);
+        HIGHWAY_EXITS.push({...edge,city:c.id,id:'exit-'+c.id});}
 }
 function createRoadNetworks(){buildIrregularRoadNetwork();buildHighwayNetwork();}
-function connectTownRoads(){for(const t of TOWN_CENTERS){
-    // Small town cross streets + nearest highway connector, all terrain conforming.
-    createRoadSegment(t.x-340,t.z+40,t.x+340,t.z+40,20);createRoadSegment(t.x+40,t.z-340,t.x+40,t.z+340,20);
-    let best=Infinity,px=0,pz=0;for(const path of HIGHWAY_PATHS)for(let i=1;i<path.length;i++){const a=path[i-1],b=path[i],dx=b.x-a.x,dz=b.z-a.z,u=THREE.MathUtils.clamp(((t.x-a.x)*dx+(t.z-a.z)*dz)/(dx*dx+dz*dz),0,1),x=a.x+dx*u,z=a.z+dz*u,dist=(t.x-x)**2+(t.z-z)**2;if(dist<best){best=dist;px=x;pz=z;}}
-    createRoadPath([{x:t.x+340,z:t.z+40},{x:(t.x+px)/2,z:(t.z+pz)/2+90},{x:px,z:pz}],20);
-}surfaceWorld.revision++;}
+function connectTownRoads(){
+    for(const t of TOWN_CENTERS){
+        // Kind-scaled cross streets through the town.
+        const ext=(t.radius||CFG.townRadius)*.5;
+        createRoadSegment(t.x-ext,t.z+30,t.x+ext,t.z+30,22);
+        createRoadSegment(t.x+30,t.z-ext,t.x+30,t.z+ext,22);
+        if(t.kind==='large'){createRoadSegment(t.x-ext,t.z-ext*.45,t.x+ext,t.z-ext*.45,18);createRoadSegment(t.x-ext*.45,t.z-ext,t.x-ext*.45,t.z+ext,18);}
+    }
+    // Minimum spanning tree joins EVERY town and city into one road network.
+    const nodes=[...CITY_CENTERS.map(c=>({x:c.x,z:c.z,city:true})),...TOWN_CENTERS];
+    const linked=new Array(CITY_CENTERS.length).fill(true).concat(new Array(TOWN_CENTERS.length).fill(false));
+    for(;;){
+        let bi=-1,bj=-1,bd=Infinity;
+        for(let i=0;i<nodes.length;i++){if(!linked[i])continue;
+            for(let j=0;j<nodes.length;j++){if(linked[j])continue;
+                const d=(nodes[i].x-nodes[j].x)**2+(nodes[i].z-nodes[j].z)**2;if(d<bd){bd=d;bi=i;bj=j;}}}
+        if(bj<0)break;
+        linked[bj]=true;
+        const a=nodes[bj],b=nodes[bi],ext=(a.radius||CFG.townRadius)*.5+60;
+        const dx=b.x-a.x,dz=b.z-a.z,dl=Math.hypot(dx,dz)||1,ux=dx/dl,uz=dz/dl;
+        const start={x:a.x+ux*ext,z:a.z+uz*ext},mid={x:(start.x+b.x)/2+uz*320,z:(start.z+b.z)/2-ux*320};
+        createRoadPath([start,mid,b],a.city||b.city?26:20);
+    }
+    surfaceWorld.revision++;
+}
 function paintTerrainSurface(tile){
     const N=tile.canvas.width,ctx=tile.canvas.getContext('2d'),scale=N/tile.s,pad=tile.s/N*2;
     ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,N,N);ctx.setTransform(scale,0,0,scale,-tile.x*scale,-tile.z*scale);
@@ -521,56 +576,108 @@ function stampTerrainScorch(pos,radius,seconds){if(!worldNature.scorches)return;
 function updateTerrainScorches(dt){if(!worldNature.scorches)return;for(let i=0;i<8;i++){terrainScorchLife[i]=Math.max(0,terrainScorchLife[i]-dt);worldNature.scorches.value[i].w=terrainScorchLife[i]/(terrainScorchMax[i]||1);}}
 function createVolumetricClouds(){
     if(worldNature.cloudMaterial)return;
-    // True fly-through volume: a vertical stack of noise planes (two cumulus
-    // bands plus high cirrus). Looking horizontally or flying through the stack
-    // accumulates layer after layer instead of showing a single painted sheet.
-    const layers=[];
-    const N=VERY_LOW_MEM?7:LOW_MEM?11:18;
-    const bandProfile=(y)=>Math.exp(-((y-780)**2)/(2*300**2))*.95+Math.exp(-((y-1040)**2)/(2*180**2))*.42;
-    for(let i=0;i<N;i++){const f=i/(N-1),y=430+f*(1120-430);
-        layers.push({y,coverage:.44,weight:bandProfile(y),cirrus:0,scale:.00028});}
-    const cN=VERY_LOW_MEM?1:3;
-    for(let i=0;i<cN;i++)layers.push({y:1650+i*300,coverage:.62,weight:.16,cirrus:1,scale:.00012});
-    const geo=new THREE.PlaneGeometry(32000,32000);geo.rotateX(-Math.PI/2);
-    // Shared uniform objects so the existing update loop tints every slice at once.
+    // Puffy cumulus: each cloud is a cluster of camera-facing, noise-eroded
+    // billboard puffs — a flat dark underside plus stacked cauliflower domes.
+    // Puffs wrap on an infinite tiled span around the camera.
+    const SPAN=56000; worldNature.cloudSpan=SPAN;
+    const CLOUDS=VERY_LOW_MEM?40:LOW_MEM?80:150;
+    const PUFF_CAP=VERY_LOW_MEM?1100:LOW_MEM?3200:7400;
+    const geo=new THREE.PlaneGeometry(2,2);
     const light={value:1},sunTint={value:sun.color.clone()},fogTint={value:scene.fog.color.clone()},fogFar={value:CFG.renderDistance};
-    worldNature.cloudMaterial={uniforms:{light,sunTint,fogTint,fogFar}};
-    worldNature.cloudSlices=[];
-    const vert=`varying vec3 vCloudWorld;void main(){vec4 w=modelMatrix*vec4(position,1.);vCloudWorld=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}`;
-    const frag=`uniform sampler2D noiseAtlas;uniform float natureTime,light,fogFar,uWeight,uCoverage,uCirrus,uInCloud,uScale;uniform vec3 sunTint,fogTint;varying vec3 vCloudWorld;
-      void main(){
-        vec2 uv=vCloudWorld.xz*uScale+vec2(natureTime*.00032,natureTime*.00012)+vCloudWorld.y*.00017;
-        float a=texture2D(noiseAtlas,uv).r,b=texture2D(noiseAtlas,uv*2.91+.19).r,c=texture2D(noiseAtlas,uv*6.2+.43).r;
-        float density;
-        if(uCirrus>.5){ float wisp=c*.5+b*.5; density=smoothstep(uCoverage,uCoverage+.3,wisp)*.5; }
-        else { float shape=a*.68+b*.24+c*.08; density=smoothstep(uCoverage,uCoverage+.32,shape); }
-        float rim=texture2D(noiseAtlas,uv+vec2(.014,.006)).r-a;
-        density*=uWeight*(1.0+uInCloud*2.6);
-        float f=smoothstep(fogFar*.6,fogFar,length(vCloudWorld-cameraPosition));
-        // Slices far above/below the camera fade gently so entering the band is smooth.
-        float vf=uCirrus>.5?1.0:smoothstep(0.,90.,abs(vCloudWorld.y-cameraPosition.y));
-        float alpha=clamp(density*(1.-f)*(uCirrus>.5?vf:mix(.55,1.,vf))*(1.+uInCloud*1.8),0.,uCirrus>.5?.32:.9);
-        if(alpha<.006)discard;
-        vec3 shade=mix(vec3(.03,.045,.075),sunTint*clamp(.69+rim*6.+b*.34,.40,1.1),clamp(light,0.,1.));
-        if(uCirrus>.5)shade=mix(shade,vec3(1.),.35);
-        vec3 col=mix(shade,fogTint,f*.6);
-        // Inside the cloud band everything washes toward bright white fog.
-        col=mix(col,mix(vec3(1.),fogTint,.35),uInCloud*.9);
-        gl_FragColor=vec4(col,alpha);
-        #include <tonemapping_fragment>
-        #include <colorspace_fragment>
-      }`;
-    for(const L of layers){
-        const mat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,depthTest:true,side:THREE.DoubleSide,
-            uniforms:{noiseAtlas:{value:getNatureNoise()},natureTime:worldNature.time,light,sunTint,fogTint,fogFar,
-                uWeight:{value:L.weight},uCoverage:{value:L.coverage},uCirrus:{value:L.cirrus},uScale:{value:L.scale},
-                uInCloud:{value:0},uCamY:{value:0},uAlt:{value:L.y}},
-            vertexShader:vert,fragmentShader:frag});
-        const cloud=new THREE.Mesh(geo,mat);cloud.position.set(camera.position.x,L.y,camera.position.z);
-        cloud.frustumCulled=false;cloud.renderOrder=3;scene.add(cloud);
-        worldNature.clouds.push(cloud);worldNature.cloudSlices.push(mat);
+    const uniforms={noiseAtlas:{value:getNatureNoise()},natureTime:worldNature.time,light,sunTint,fogTint,fogFar,
+        uInCloud:{value:0},cloudSpan:{value:SPAN},wind:{value:new THREE.Vector2()}};
+    worldNature.cloudMaterial={uniforms};
+    const vert=`attribute float iSeed; attribute float iScale; attribute float iDark;
+        uniform float cloudSpan; uniform vec2 wind;
+        varying vec2 vUv; varying float vSeed; varying float vDark; varying vec3 vW;
+        void main(){ vUv=position.xy; vSeed=iSeed; vDark=iDark;
+            vec4 c=modelMatrix*instanceMatrix*vec4(0.,0.,0.,1.);
+            vec3 w=c.xyz;
+            vec2 rel=w.xz-cameraPosition.xz+wind;
+            rel=mod(rel+vec2(cloudSpan*.5),cloudSpan)-vec2(cloudSpan*.5);
+            w.xz=cameraPosition.xz+rel;
+            vW=w;
+            vec4 vp=viewMatrix*vec4(w,1.);
+            vp.xy+=position.xy*iScale;
+            gl_Position=projectionMatrix*vp; }`;
+    const frag=`uniform sampler2D noiseAtlas; uniform float light,fogFar,uInCloud; uniform vec3 sunTint,fogTint;
+        varying vec2 vUv; varying float vSeed; varying float vDark; varying vec3 vW;
+        void main(){
+            vec2 q=vUv*.5+.5;
+            float n1=texture2D(noiseAtlas,fract(q*.9+vec2(vSeed*.131,vSeed*.073))).r;
+            float n2=texture2D(noiseAtlas,fract(q*2.7+vec2(vSeed*.311,vSeed*.197)+.37)).r;
+            float n3=texture2D(noiseAtlas,fract(q*4.3+vec2(vSeed*.53,vSeed*.41)+.71)).r;
+            float erode=(n1-.5)*.62+(n2-.5)*.24;
+            float shape=smoothstep(1.04,0.28,vUv.length()+erode);
+            if(shape<.004)discard;
+            float top=smoothstep(-.45,.65,vUv.y+(n1-.5)*.3);
+            vec3 shadow=mix(vec3(.36,.39,.47),vec3(.58,.62,.7),vDark);
+            vec3 lit=mix(vec3(.84,.87,.94),vec3(1.03,1.0,.96),clamp(n3*.4+top*.7,0.,1.));
+            vec3 col=mix(shadow,lit,clamp(top,0.,1.));
+            col*=mix(vec3(.5),sunTint*1.08+vec3(.18),clamp(light,0.,1.));
+            float d=distance(vW,cameraPosition);
+            float fogf=smoothstep(fogFar*.42,fogFar,d);
+            col=mix(col,fogTint,fogf*.85);
+            col=mix(col,mix(vec3(1.),fogTint,.28),uInCloud);
+            float nearFade=smoothstep(2400.,140.,d);
+            float a=shape*(1.-fogf)*mix(1.,.4,nearFade)*(1.+uInCloud*1.6)*(1.-vDark*.28);
+            gl_FragColor=vec4(clamp(col,0.,1.25),clamp(a,0.,.96));
+            #include <tonemapping_fragment>
+            #include <colorspace_fragment> }`;
+    const mat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,depthTest:true,side:THREE.DoubleSide,uniforms,vertexShader:vert,fragmentShader:frag});
+    const mesh=new THREE.InstancedMesh(geo,mat,PUFF_CAP);
+    mesh.frustumCulled=false;mesh.renderOrder=3;
+    const seedA=new THREE.InstancedBufferAttribute(new Float32Array(PUFF_CAP),1);
+    const scaleA=new THREE.InstancedBufferAttribute(new Float32Array(PUFF_CAP),1);
+    const darkA=new THREE.InstancedBufferAttribute(new Float32Array(PUFF_CAP),1);
+    geo.setAttribute('iSeed',seedA);geo.setAttribute('iScale',scaleA);geo.setAttribute('iDark',darkA);
+    const H=new THREE.Matrix4().makeScale(0,0,0);
+    for(let i=0;i<PUFF_CAP;i++)mesh.setMatrixAt(i,H);
+    scene.add(mesh);
+    const dmy=new THREE.Object3D(); let used=0; const centers=[];
+    function puff(x,y,z,s,dark){ if(used>=PUFF_CAP)return;
+        dmy.position.set(x,y,z);dmy.rotation.set(0,0,0);dmy.scale.setScalar(1);dmy.updateMatrix();
+        mesh.setMatrixAt(used,dmy.matrix);
+        const sd=Math.random()*40; seedA.setX(used,sd);scaleA.setX(used,s);darkA.setX(used,dark); used++; }
+    for(let c=0;c<CLOUDS;c++){
+        const cx=(Math.random()-.5)*SPAN, cz=(Math.random()-.5)*SPAN;
+        const base=650+Math.random()*300, rx=230+Math.random()*480, rz=150+Math.random()*320;
+        const top=base+170+Math.random()*300;
+        centers.push({x:cx,z:cz,base,top,rx,rz});
+        // Flat dark underside: a ragged sheet of wide puffs at cloud base.
+        const nb=10+((Math.random()*14)|0);
+        for(let i=0;i<nb;i++){ const a=Math.random()*6.283, rr=Math.sqrt(Math.random());
+            puff(cx+Math.cos(a)*rx*rr, base+(Math.random()-.5)*24, cz+Math.sin(a)*rz*rr, 70+Math.random()*95, 1); }
+        // Cauliflower domes: stacked shrinking rings of bright puffs.
+        const heaps=4+((Math.random()*4)|0);
+        for(let h=0;h<heaps;h++){ const a=Math.random()*6.283, rr=Math.sqrt(Math.random());
+            const hx=cx+Math.cos(a)*rx*rr, hz=cz+Math.sin(a)*rz*rr;
+            const hr=85+Math.random()*150, hh=hr*(.9+Math.random()*.75);
+            const rings=[[6,1,.42],[5,.66,.32],[3,.36,.24],[1,.12,.2]];
+            for(const [n,radF,sF] of rings){ for(let i=0;i<n;i++){ const aa=n===1?0:i/n*6.283+h;
+                puff(hx+Math.cos(aa)*hr*radF, base+hh*(1-radF*.55)+(Math.random()-.5)*22, hz+Math.sin(aa)*hr*radF*.72, hr*sF*(.8+Math.random()*.4), radF<.3?0:0+ (radF===1?1:0)); } }
+            puff(hx, base+hh, hz, hr*.22, 0);
+        }
     }
+    mesh.instanceMatrix.needsUpdate=true;seedA.needsUpdate=true;scaleA.needsUpdate=true;darkA.needsUpdate=true;
+    worldNature.clouds=[mesh]; worldNature.cloudCenters=centers;
+    // One high cirrus sheet for altitude flying (genuinely layered by nature).
+    const cGeo=new THREE.PlaneGeometry(40000,40000);cGeo.rotateX(-Math.PI/2);
+    const cMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.DoubleSide,uniforms:{
+        noiseAtlas:{value:getNatureNoise()},natureTime:worldNature.time,light,sunTint,fogTint,fogFar,uInCloud:{value:0},uCirrus:{value:1}},
+        vertexShader:`varying vec3 vW;void main(){vec4 w=modelMatrix*vec4(position,1.);vW=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}`,
+        fragmentShader:`uniform sampler2D noiseAtlas;uniform float natureTime,light,fogFar,uInCloud;uniform vec3 sunTint,fogTint;varying vec3 vW;
+            void main(){vec2 uv=vW.xz*.00012+vec2(natureTime*.0002,natureTime*.00007);
+            float w=texture2D(noiseAtlas,uv).r*.5+texture2D(noiseAtlas,uv*2.7+.3).r*.5;
+            float dens=smoothstep(.58,.86,w)*.5;float f=smoothstep(fogFar*.6,fogFar,length(vW-cameraPosition));
+            vec3 col=mix(mix(vec3(.9),sunTint,clamp(light,0.,1.)),fogTint,f*.6);
+            float a=dens*(1.-f)+uInCloud*.3; if(a<.006)discard; gl_FragColor=vec4(col,a);
+            #include <tonemapping_fragment> #include <colorspace_fragment> }`});
+    const cirrus=new THREE.Mesh(cGeo,cMat);cirrus.position.set(0,1750,0);cirrus.frustumCulled=false;cirrus.renderOrder=2;scene.add(cirrus);
+    worldNature.cirrusMesh=cirrus;
+    worldNature.cloudSlices=[mat,cMat];
 }
+
 function generateNatureTileRow(t){
  const row=t.row++,h=t.heights,step=t.s/16,g=t.mesh.geometry,a=g.attributes;
  if(row<19){for(let x=0;x<19;x++)h[row*19+x]=terrainHeightAt(t.x+(x-1)*step,t.z+(row-1)*step);return false;}
@@ -617,12 +724,19 @@ function updateWorldNature(dt,cameraPosition){
         for(const tile of pending.map.values())tile.mesh.visible=true;worldNature.active=pending.map;worldNature.signature=pending.signature;worldNature.center.copy(pending.center);worldNature.pending=null;}
     updateNatureGrass(cameraPosition);updateForestLOD(cameraPosition);
     if(worldNature.cloudMaterial){const u=worldNature.cloudMaterial.uniforms;u.light.value=Math.max(.035,sun.intensity/2.75);u.sunTint.value.copy(sun.color);u.fogTint.value.copy(scene.fog?scene.fog.color:scene.background);u.fogFar.value=scene.fog?scene.fog.far:CFG.renderDistance;
-        for(const cloud of worldNature.clouds){cloud.position.x=cameraPosition.x;cloud.position.z=cameraPosition.z;}
-        // Wash the view toward white when flying through the cumulus/cirrus bands.
-        const cy=cameraPosition.y;
-        const inCore=Math.exp(-((cy-780)**2)/(2*130**2))*.62+Math.exp(-((cy-1040)**2)/(2*90**2))*.3;
-        const inCirrus=Math.exp(-Math.min(Math.abs(cy-1650),Math.abs(cy-1950),Math.abs(cy-2250))/120)*.22;
-        if(worldNature.cloudSlices)for(const m of worldNature.cloudSlices){m.uniforms.uInCloud.value=m.uniforms.uCirrus.value>.5?inCirrus:inCore;}
+        if(u.wind){const tt=worldNature.time.value;u.wind.value.set(tt*7,tt*3.5);}
+        if(worldNature.cirrusMesh){worldNature.cirrusMesh.position.x=cameraPosition.x;worldNature.cirrusMesh.position.z=cameraPosition.z;}
+        // Whiteout only while actually inside a cumulus cluster footprint.
+        const cy=cameraPosition.y, SPAN=worldNature.cloudSpan||56000; let inCore=0;
+        if(worldNature.cloudCenters)for(const c of worldNature.cloudCenters){
+            let dx=c.x-cameraPosition.x, dz=c.z-cameraPosition.z;
+            dx=((dx+SPAN*.5)%SPAN+SPAN)%SPAN-SPAN*.5; dz=((dz+SPAN*.5)%SPAN+SPAN)%SPAN-SPAN*.5;
+            const ex=(dx*dx)/(c.rx*c.rx)+(dz*dz)/(c.rz*c.rz);
+            if(ex<1){ const vf=Math.exp(-Math.max(0,Math.abs(cy-(c.base+c.top)*.5)-(c.top-c.base)*.55)/70);
+                inCore=Math.max(inCore,(1-ex)*vf*.9); }
+        }
+        const inCirrus=Math.exp(-Math.abs(cy-1750)/130)*.25;
+        if(worldNature.cloudSlices)for(const m of worldNature.cloudSlices){m.uniforms.uInCloud.value=m.uniforms.uCirrus?inCirrus:inCore;}
     }
 }
 
@@ -1053,6 +1167,7 @@ function updateQueuedExplosionGameplay(dt){
         applyExplosionDamage(event.pos, event.cfg, event.radius);
         damageBuildingsInRadius(event.pos, event.radius);
         damageForestsInRadius(event.pos, event.radius);
+        damageStreetLights(event.pos, event.radius*1.05);
         pendingExplosionGameplay.splice(i, 1);
     }
 }
@@ -1066,8 +1181,8 @@ let jetBoost = false;
 let isFiring = false, fireTimer = 0, prevTime = performance.now();
 const velocity = new THREE.Vector3(), direction = new THREE.Vector3();
 let currentWeaponIdx = 0;
-const inventory = [true, true, true, true, true, false, false, false, false, false];
-const ammo = [9999, 250, 10, 8, 8, 0, 0, 0, 0, 0];
+const inventory = [true, true, true, true, true, false, false, false, false, false, false, false];
+const ammo = [9999, 250, 10, 8, 8, 0, 0, 0, 0, 0, 0, 0];
 let playerSpeed = 420, mode = 'walking', currentVehicle = null;
 let missileView = false, missileViewProjectile = null;
 let savedPlayerCamPos = new THREE.Vector3(), savedPlayerCamQuat = new THREE.Quaternion();
@@ -1750,8 +1865,8 @@ const signMats = signColors.map(c => makeEfficientMaterial({ color: c, roughness
 /* CITY STRIKE r160 — bounded, spatially chunked instanced-building replacement.
    Install once at the original createDowntownBuilding declaration (see manifest). */
 
-const BUILDING_LIMIT = VERY_LOW_MEM ? 1800 : LOW_MEM ? 3000 : 4400;
-const BUILDING_TOWN_RESERVE = VERY_LOW_MEM ? 80 : LOW_MEM ? 160 : 320;
+const BUILDING_LIMIT = VERY_LOW_MEM ? 2600 : DECENT_GPU ? 11000 : 7200;
+const BUILDING_TOWN_RESERVE = VERY_LOW_MEM ? 200 : DECENT_GPU ? 1800 : 1100;
 const CITY_BUILDING_LIMIT = Math.floor((BUILDING_LIMIT - BUILDING_TOWN_RESERVE) / CITY_CENTERS.length);
 const BUILDING_CHUNK_SIZE = 3072;
 const BUILDING_WINDOW_CAP = VERY_LOW_MEM ? 420 : LOW_MEM ? 650 : 880;
@@ -1925,6 +2040,19 @@ function createMediumRise(x,z){
     const w=30+Math.random()*22,d=30+Math.random()*22,h=30+Math.random()*38,rec=_newBuilding(x,z,w,d,h,'medium',0x7a94a5,Math.random()<.5?'concrete':'glass',{resistance:.48});if(!rec)return null;
     _queuePart(rec,'body',x,rec.groundY+h*.5,z,w,h,d,0,rec.mat===buildingMats.glass?'glass':'concrete');_queuePart(rec,'accessory',x,rec.groundY+h+.17,z,w*1.03,.34,d*1.03,0,'trim');return rec;
 }
+// Tightly-spaced terrace houses lining a street (lot centre -> nearest road).
+function createSuburbRow(cx,cz,q){
+    const city=getNearestCity(cx,cz).city,r=CFG.roadZoneRadius;
+    const roadX=city.x-r+Math.round((cx-(city.x-r))/CFG.blockSize)*CFG.blockSize;
+    const roadZ=city.z-r+Math.round((cz-(city.z-r))/CFG.blockSize)*CFG.blockSize;
+    const alongX=Math.abs(cz-roadZ)<Math.abs(cx-roadX);
+    const n=2+((q*100)%3|0); // 2-4 homes
+    const setback=26+Math.random()*8, spacing=25;
+    if(alongX){const side=Math.sign(cz-roadZ)||1,fz=roadZ+side*setback;
+        for(let i=0;i<n;i++){const hx=cx+(i-(n-1)/2)*spacing;createSuburbHouse(hx,fz+(Math.random()-.5)*6,false);}}
+    else{const side=Math.sign(cx-roadX)||1,fx=roadX+side*setback;
+        for(let i=0;i<n;i++){const hz=cz+(i-(n-1)/2)*spacing;createSuburbHouse(fx+(Math.random()-.5)*6,hz,false);}}
+}
 function createSuburbHouse(x,z,isSmallTown=false){
     const w=12+Math.random()*5,d=11+Math.random()*5,h=7.5+Math.random()*3.5,rot=isSmallTown?Math.floor(Math.random()*4)*Math.PI*.5:_nearestStreetFacing(x,z);
     const rec=_newBuilding(x,z,w,d,h,'house',0xd2bea0,'house',{resistance:.25,rot});if(!rec)return null;_surface(x,z,w+9,d+9,'lawn',rot);
@@ -1947,14 +2075,118 @@ function createCommercialBuilding(x,z,type='store'){
 }
 function createLocalCity(city){
     CITY_RECORDS.push({id:city.id,name:city.name,x:city.x,z:city.z,radius:CFG.cityRadius});const previous=buildingRender.activeCityId;buildingRender.activeCityId=city.id;
-    const bs=CFG.blockSize,r=CFG.roadZoneRadius;const lots=[];for(let lx=-r;lx<r;lx+=bs)for(let lz=-r;lz<r;lz+=bs)lots.push({lx,lz,key:hash2(Math.round(lx),Math.round(lz))});lots.sort((a,b)=>a.key-b.key);for(const {lx,lz} of lots){const cx=city.x+lx+bs*.5,cz=city.z+lz+bs*.5,dist=Math.hypot(lx+bs*.5,lz+bs*.5);if(dist>CFG.cityRadius-bs*.22)continue;const hash=((Math.imul((lx/bs)|0,73856093)^Math.imul((lz/bs)|0,19349663)^Math.imul(city.x|0,83492791))>>>0)%100;if(hash>43)continue;const q=(hash%37)/37;if(dist<CFG.downtownRadius){if(q<.16)createCommercialBuilding(cx,cz,'hotel');else if(q<.43)createCommercialBuilding(cx,cz,'apartment');else if(q<.55)createCommercialBuilding(cx,cz,'store');else createDowntownBuilding(cx,cz);}else if(dist<CFG.innerUrbanRadius){if(q<.22)createCommercialBuilding(cx,cz,'apartment');else if(q<.38)createCommercialBuilding(cx,cz,'store');else if(q<.45)createCommercialBuilding(cx,cz,'gas');else createMediumRise(cx,cz);}else if(dist<CFG.mixedUrbanRadius){if(q<.15)createCommercialBuilding(cx,cz,'store');else if(q<.21)createCommercialBuilding(cx,cz,'gas');else if(q<.70){createSuburbHouse(cx-bs*.19,cz-bs*.17);if(q>.38)createSuburbHouse(cx+bs*.19,cz+bs*.17);}else createMediumRise(cx,cz);}else if(q<.09)createCommercialBuilding(cx,cz,q<.035?'gas':'store');else{createSuburbHouse(cx-bs*.20,cz-bs*.18);if(q>.32)createSuburbHouse(cx+bs*.20,cz+bs*.18);}}
+    const bs=CFG.blockSize,r=CFG.roadZoneRadius;const lots=[];for(let lx=-r;lx<r;lx+=bs)for(let lz=-r;lz<r;lz+=bs)lots.push({lx,lz,key:hash2(Math.round(lx),Math.round(lz))});lots.sort((a,b)=>a.key-b.key);for(const {lx,lz} of lots){const cx=city.x+lx+bs*.5,cz=city.z+lz+bs*.5,dist=Math.hypot(lx+bs*.5,lz+bs*.5);if(dist>CFG.cityRadius-bs*.22)continue;const hash=((Math.imul((lx/bs)|0,73856093)^Math.imul((lz/bs)|0,19349663)^Math.imul(city.x|0,83492791))>>>0)%100;if(hash>43)continue;const q=(hash%37)/37;if(dist<CFG.downtownRadius){if(q<.16)createCommercialBuilding(cx,cz,'hotel');else if(q<.43)createCommercialBuilding(cx,cz,'apartment');else if(q<.55)createCommercialBuilding(cx,cz,'store');else createDowntownBuilding(cx,cz);}else if(dist<CFG.innerUrbanRadius){if(q<.22)createCommercialBuilding(cx,cz,'apartment');else if(q<.38)createCommercialBuilding(cx,cz,'store');else if(q<.45)createCommercialBuilding(cx,cz,'gas');else createMediumRise(cx,cz);}else if(dist<CFG.mixedUrbanRadius){if(q<.15)createCommercialBuilding(cx,cz,'store');else if(q<.21)createCommercialBuilding(cx,cz,'gas');else if(q<.70){createSuburbHouse(cx-bs*.19,cz-bs*.17);if(q>.38)createSuburbHouse(cx+bs*.19,cz+bs*.17);}else createMediumRise(cx,cz);}else if(q<.07)createCommercialBuilding(cx,cz,q<.03?'gas':'store');else createSuburbRow(cx,cz,q);}
     buildingRender.activeCityId=previous;
 }
-function createTown(cx,cz,index){
-    TOWN_CENTERS.push({id:'town'+index,name:'Town '+String(index+1).padStart(2,'0'),x:cx,z:cz,organicR:150+Math.random()*130,seed:Math.random()*100});const previousLimit=buildingRender.activeTownLimit,previousCount=buildingRender.activeTownCount,n=CFG.townCount,quota=Math.floor(BUILDING_TOWN_RESERVE/n)+(index<BUILDING_TOWN_RESERVE%n?1:0);buildingRender.activeTownLimit=quota;buildingRender.activeTownCount=0;
-    createMediumRise(cx,cz);for(let i=0;i<8&&buildingRender.activeTownCount<quota;i++){const a=i*Math.PI*.25,r=95+(i%3)*58;createSuburbHouse(cx+Math.cos(a)*r,cz+Math.sin(a)*r,true);}if(buildingRender.activeTownCount<quota)createCommercialBuilding(cx+95,cz,'store');if(buildingRender.activeTownCount<quota)createCommercialBuilding(cx-95,cz,'gas');buildingRender.townBuilt+=buildingRender.activeTownCount;buildingRender.activeTownLimit=previousLimit;buildingRender.activeTownCount=previousCount;
+function createTown(cx,cz,index,kind='small'){
+    const large=kind==='large', rad=large?CFG.largeTownRadius:CFG.smallTownRadius;
+    const quota=large?34:12;
+    TOWN_CENTERS.push({id:'town'+index,kind,name:(large?'Large Town ':'Small Town ')+String(index+1).padStart(2,'0'),x:cx,z:cz,radius:rad,organicR:(large?260:140)+Math.random()*(large?220:120),seed:Math.random()*100});
+    const previousLimit=buildingRender.activeTownLimit,previousCount=buildingRender.activeTownCount;
+    buildingRender.activeTownLimit=quota;buildingRender.activeTownCount=0;
+    createMediumRise(cx,cz);
+    if(large&&buildingRender.activeTownCount<quota)createMediumRise(cx+220,cz-160);
+    // House rings along the cross-street grid; large towns get two rings.
+    const rings=large?[180,420,680]:[150,300];
+    for(let ri=0;ri<rings.length;ri++){const r=rings[ri],n=large?12:8;
+        for(let i=0;i<n&&buildingRender.activeTownCount<quota;i++){const a=i/n*Math.PI*2+ri*.4;createSuburbHouse(cx+Math.cos(a)*r,cz+Math.sin(a)*r,true);}
+    }
+    if(buildingRender.activeTownCount<quota)createCommercialBuilding(cx+rad*.55,cz,'store');
+    if(buildingRender.activeTownCount<quota)createCommercialBuilding(cx-rad*.55,cz,'gas');
+    if(large&&buildingRender.activeTownCount<quota)createCommercialBuilding(cx,cz+rad*.5,'store');
+    buildingRender.townBuilt+=buildingRender.activeTownCount;buildingRender.activeTownLimit=previousLimit;buildingRender.activeTownCount=previousCount;
 }
-function seedUrbanTrees(){for(const city of CITY_CENTERS)for(let lx=-CFG.suburbRadius;lx<=CFG.suburbRadius;lx+=CFG.blockSize)for(let lz=-CFG.suburbRadius;lz<=CFG.suburbRadius;lz+=CFG.blockSize){const d=Math.hypot(lx,lz);if(d<CFG.downtownRadius||d>CFG.suburbRadius)continue;const n=d<CFG.mixedUrbanRadius?1:2;for(let i=0;i<n;i++){const x=city.x+lx+(i?55:-55),z=city.z+lz+(i?70:-70);if(!pointIsBlocked(x,z,3)&&(!(typeof roadClearAt==='function')||roadClearAt(x,z,3)))createStreetTree(x,z,.9+Math.random()*.25);}}}
+function seedUrbanTrees(){
+    // Trees line both sides of every street: walk the road grid and place
+    // rows at regular intervals with a small setback from the carriageway.
+    const treeSpacing = VERY_LOW_MEM?180:DECENT_GPU?72:120, parkCount = VERY_LOW_MEM?3:DECENT_GPU?10:6;
+    for(const city of CITY_CENTERS){
+        const bs=CFG.blockSize,r=CFG.roadZoneRadius,off=CFG.roadWidth*.5+5;
+        for(let k=-r;k<=r;k+=bs){const extent=Math.sqrt(Math.max(0,CFG.cityRadius**2-k*k));
+            for(let s=-extent;s<extent;s+=treeSpacing){const j=Math.round((s+extent)/treeSpacing);
+                const side=(j%2?1:-1);
+                const ax=city.x+s+((hash2(j,k|0)*18)-9), az=city.z+k+side*off;
+                const bx=city.x+k+side*off, bz=city.z+s+((hash2(k|0,j)*18)-9);
+                for(const [tx,tz] of [[ax,az],[bx,bz]]){
+                    const d=Math.hypot(tx-city.x,tz-city.z);
+                    if(d<CFG.downtownRadius*.7||d>CFG.cityRadius-120)continue;
+                    if(!pointIsBlocked(tx,tz,2.4)&&roadClearAt(tx,tz,2.4))createStreetTree(tx,tz,.82+Math.random()*.5);
+                }}
+        }
+        // Small parks: dense clumps inside the mixed-use ring.
+        for(let p=0;p<parkCount;p++){const a=hash2(p*7+3,(city.x|0)+1)*6.283,rr=CFG.innerUrbanRadius+hash2(p*13+1,(city.z|0)+1)*(CFG.suburbRadius-CFG.innerUrbanRadius);
+            const px=city.x+Math.cos(a)*rr,pz=city.z+Math.sin(a)*rr;
+            for(let t=0;t<14;t++){const tx=px+(Math.random()-.5)*90,tz=pz+(Math.random()-.5)*90;if(!pointIsBlocked(tx,tz,2.4)&&roadClearAt(tx,tz,2.4))createStreetTree(tx,tz,.8+Math.random()*.7);}}
+    }
+}
+// ─── STREETLIGHT POLES (knock over in blasts) ───
+const STREETLIGHT_CAP = VERY_LOW_MEM?2400:DECENT_GPU?74000:15000;
+const streetPoles=[]; let streetlightMesh=null, streetlightFallenMesh=null;
+let streetlightFinalized=false;
+function createStreetLights(){
+    if(streetlightFinalized)return; streetlightFinalized=true;
+    const poleMat=makeEfficientMaterial({color:0x3c4248,roughness:.6,metalness:.55,envMapIntensity:.9});
+    const lampMat=makeEfficientMaterial({color:0xfff2c8,emissive:0xffdf90,emissiveIntensity:1.15,roughness:.4});
+    const pole=new THREE.CylinderGeometry(.085,.12,7.4,6).translate(0,3.7,0).toNonIndexed();
+    const arm=new THREE.BoxGeometry(1.5,.09,.09).translate(.72,7.45,0).toNonIndexed();
+    const head=new THREE.BoxGeometry(.5,.16,.3).translate(1.45,7.35,0).toNonIndexed();
+    const geo=mergeGeometries([pole,mergeGeometries([arm,head])],true);
+    streetlightMesh=new THREE.InstancedMesh(geo,[poleMat,lampMat],STREETLIGHT_CAP);
+    streetlightMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);streetlightMesh.castShadow=false;streetlightMesh.frustumCulled=false;
+    streetlightFallenMesh=new THREE.InstancedMesh(geo,[poleMat,lampMat],STREETLIGHT_CAP);
+    streetlightFallenMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);streetlightFallenMesh.frustumCulled=false;
+    for(let i=0;i<STREETLIGHT_CAP;i++){streetlightMesh.setMatrixAt(i,forestHiddenMatrix);streetlightFallenMesh.setMatrixAt(i,forestHiddenMatrix);}
+    scene.add(streetlightMesh);scene.add(streetlightFallenMesh);
+    const _d=new THREE.Object3D();
+    function addPole(x,z,rotY){
+        if(streetPoles.length>=STREETLIGHT_CAP)return;
+        const y=terrainHeightAt(x,z);
+        _d.position.set(x,y,z);_d.rotation.set(0,rotY,0);_d.scale.setScalar(1);_d.updateMatrix();
+        const idx=streetPoles.length;streetlightMesh.setMatrixAt(idx,_d.matrix);
+        streetPoles.push({x,y,z,rotY,idx,fallen:false});
+    }
+    // Major streets get poles every 130 m alternating sides; towns line their cross.
+    for(const city of CITY_CENTERS){const bs=CFG.blockSize,r=CFG.roadZoneRadius;
+        for(let k=-r;k<=r;k+=bs){const extent=Math.sqrt(Math.max(0,CFG.cityRadius**2-k*k));
+            for(let s=-extent+90;s<extent;s+=130){const j=Math.round((s+extent)/130),side=(j%2?1:-1),off=CFG.roadWidth*.5+3.5;
+                addPole(city.x+s,city.z+k+side*off,side>0?-Math.PI/2:Math.PI/2);
+                addPole(city.x+k+side*off,city.z+s,side>0?0:Math.PI);}}
+    }
+    for(const t of TOWN_CENTERS){const ext=(t.radius||CFG.townRadius)*.5;
+        for(let s=-ext;s<=ext;s+=120){addPole(t.x+s,t.z+42,0);addPole(t.x+42,t.z+s,-Math.PI/2);}
+        if(t.kind==='large')for(let s=-ext;s<=ext;s+=120){addPole(t.x+s,t.z-ext*.45-12,0);addPole(t.x-ext*.45-12,t.z+s,-Math.PI/2);}}
+    // Trim both buffers to the instances actually placed (avoid shading hidden slots).
+    streetlightMesh.count=streetPoles.length;streetlightFallenMesh.count=streetPoles.length;
+    streetlightMesh.instanceMatrix.needsUpdate=true;streetlightFallenMesh.instanceMatrix.needsUpdate=true;
+}
+const fallingPoles=[];
+function damageStreetLights(pos,radius){
+    if(!streetlightFinalized)return;
+    const r2=radius*radius;
+    for(const p of streetPoles){if(p.fallen)continue;
+        const dx=p.x-pos.x,dz=p.z-pos.z,d2=dx*dx+dz*dz;if(d2>r2)continue;
+        const d=Math.sqrt(d2)||.01; p.fallen=true;
+        const dirx=dx/d,dirz=dz/d;
+        streetlightMesh.setMatrixAt(p.idx,forestHiddenMatrix);streetlightMesh.instanceMatrix.needsUpdate=true;
+        fallingPoles.push({idx:p.idx,x:p.x,y:p.y,z:p.z,rotY:p.rotY,dirx,dirz,tilt:0,vel:.4+(1-d/radius)*1.4,delay:Math.min(.9,d/Math.max(120,radius*1.1)),age:0,settled:false});
+    }
+}
+const _fpQ=new THREE.Quaternion(),_fpE=new THREE.Euler(),_fpS=new THREE.Vector3(1,1,1),_fpP=new THREE.Vector3(),_fpM=new THREE.Matrix4(),_fpAxis=new THREE.Vector3(),_fpQY=new THREE.Quaternion();
+function updateFallingPoles(dt){
+    if(!fallingPoles.length)return;let changed=false;
+    for(const f of fallingPoles){if(f.settled)continue;f.age+=dt;if(f.age<f.delay)continue;
+        f.vel+=(3.4*Math.sin(f.tilt)+.3)*dt;f.tilt+=f.vel*dt;
+        if(f.tilt>=Math.PI*.5){f.tilt=Math.PI*.5;f.settled=true;
+            if(realismFX){realismFX.fracture({x:f.x+f.dirx*6,y:f.y+.4,z:f.z+f.dirz*6},{x:f.x,z:f.z},6,['metal','glass'],9,.9);
+                for(let i=0;i<3;i++)realismFX.spawnSmoke({x:f.x+f.dirx*6,y:f.y+.6,z:f.z+f.dirz*6,r:1+Math.random(),maxR:5,vr:1,life:3+Math.random()*3,alpha:.5,hot:.3,buoy:.5,hotColor:0x2b2622,col:0x6a625a});}}
+        _fpAxis.set(-f.dirz,0,f.dirx);
+        _fpQ.setFromAxisAngle(_fpAxis,f.tilt);
+        _fpE.set(0,f.rotY,0);_fpQY.setFromEuler(_fpE);_fpQ.premultiply(_fpQY);
+        _fpP.set(f.x,f.y,f.z);_fpM.compose(_fpP,_fpQ,_fpS);
+        streetlightFallenMesh.setMatrixAt(f.idx,_fpM);changed=true;
+    }
+    if(changed)streetlightFallenMesh.instanceMatrix.needsUpdate=true;
+}
 
 function finalizeBuildingInstances(){
     if(buildingRender.finalized)return;buildingRender.finalized=true;buildingRender.bodyGeo.computeBoundingSphere();buildingRender.thinGeo.computeBoundingSphere();
@@ -2234,6 +2466,29 @@ function damageBuilding(rec,hitPos,radius,force=1){
             }
         }
     }
+    // Gravity support sweep: every wall panel must be carried by the panel
+    // directly beneath it (or a corner beam); unsupported upper panels fall.
+    for(let pass=0;pass<5;pass++){
+        let felled=0;
+        for(const cell of rec.cells){
+            if(!cell.alive||cell.beam)continue;
+            if(cell.roof){
+                // Roof slab needs at least two living supports at the top level.
+                const top=Math.max(0,...rec.cells.filter(c=>c.alive&&!c.roof).map(c=>c.level));
+                let support=0;for(const c of rec.cells)if(c.alive&&(c.beam)&&c.level===top)support++;
+                if(support<2){destroyCell(cell,rec,hitPos,radius,force,true);removed++;felled++;}
+                continue;
+            }
+            if(cell.level===0)continue; // ground floor stands on the earth
+            const below=rec.cells.find(c=>c.alive&&!c.roof&&c.wallSide===cell.wallSide&&c.seg===cell.seg&&c.level===cell.level-1);
+            if(below)continue;
+            // A surviving corner beam directly below either end can still carry it.
+            const beamBelow=rec.cells.some(c=>c.alive&&c.beam&&c.level===cell.level-1);
+            if(beamBelow)continue;
+            destroyCell(cell,rec,hitPos,radius,force,true);removed++;felled++;
+        }
+        if(!felled)break;
+    }
     if(removed){buildingRender.ruinMesh.instanceMatrix.needsUpdate=true;buildingRender.charMesh.instanceMatrix.needsUpdate=true;rec.damage+=removed*2;playSound('crash');}
     if(!rec.cells.some(c=>c.alive)){rec.ruined=true;rec.cellProxies.length=0;}
 }
@@ -2244,7 +2499,7 @@ function damageBuildingsInRadius(pos,radius){
 function getShootTargets(camPos){
     _shootTargets.length=0;const R=420,R2=R*R;for(const n of npcs)if(!n.userData.dead&&n.position.distanceToSquared(camPos)<R2)_shootTargets.push(n);for(const c of cars)if(c.position.distanceToSquared(camPos)<R2)_shootTargets.push(c);for(const h of helicopters)if(h!==currentVehicle&&h.position.distanceToSquared(camPos)<R2)_shootTargets.push(h);for(const j of jets)if(j!==currentVehicle&&j.position.distanceToSquared(camPos)<R2)_shootTargets.push(j);for(const b of buildings){const dx=b.x-camPos.x,dz=b.z-camPos.z;if(dx*dx+dz*dz>=R2)continue;if(!b.panelized&&b.originalMesh)_shootTargets.push(b.originalMesh);else if(b.panelized)for(const cell of b.cells||[])if(cell.alive&&cell.proxy)_shootTargets.push(cell.proxy);}return _shootTargets;
 }
-function createCity(){for(const city of CITY_CENTERS)createLocalCity(city);generateTownCenters();seedUrbanTrees();createForests();finalizeTreeInstances();for(let i=0;i<CFG.farmCount;i++){const a=Math.random()*Math.PI*2,r=22000+Math.random()*6500;createFarm(Math.cos(a)*r,Math.sin(a)*r);}for(let i=0;i<84;i++){const a=Math.random()*Math.PI*2,r=20500+Math.random()*9000;createHill(Math.cos(a)*r,Math.sin(a)*r,44+Math.random()*80);}finalizeBuildingInstances();}
+function createCity(){for(const city of CITY_CENTERS)createLocalCity(city);generateTownCenters();seedUrbanTrees();createStreetLights();createForests();finalizeTreeInstances();for(let i=0;i<CFG.farmCount;i++){const a=Math.random()*Math.PI*2,r=8000+Math.random()*40000;createFarm(Math.cos(a)*r,Math.sin(a)*r);}for(let i=0;i<140;i++){const a=Math.random()*Math.PI*2,r=48000+Math.random()*26000;createHill(Math.cos(a)*r,Math.sin(a)*r,60+Math.random()*160);}finalizeBuildingInstances();}
 
 
 // ─── PANEL DAMAGE ───
@@ -2554,6 +2809,7 @@ function setTreeInstanceVisible(t,on){
 }
 function natureSegmentDistance(x,z,ax,az,bx,bz){const dx=bx-ax,dz=bz-az,t=Math.max(0,Math.min(1,((x-ax)*dx+(z-az)*dz)/(dx*dx+dz*dz||1)));return Math.hypot(x-ax-t*dx,z-az-t*dz);}
 
+const GRASS_GRID=VERY_LOW_MEM?40:DECENT_GPU?72:56, GRASS_COUNT=GRASS_GRID*GRASS_GRID, GRASS_CELL=2.7;
 function createNatureGrass(){
     const positions=[],colors=[],indices=[];
     for(let blade=0;blade<3;blade++){const a=blade*Math.PI/3,ox=Math.sin(blade*2.3)*.17,oz=Math.cos(blade*2.3)*.17,base=positions.length/3;
@@ -2565,19 +2821,19 @@ function createNatureGrass(){
         float fade=1.-smoothstep(48.,70.,distance(cameraPosition,anchor));
         transformed.x+=sin(natureTime*1.9+anchor.x*.17+anchor.z*.12)*transformed.y*transformed.y*.16;
         transformed*=fade;`);};mat.customProgramCacheKey=()=> 'nature-grass-v1';
-    const mesh=new THREE.InstancedMesh(geo,mat,1600);mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.frustumCulled=false;
-    for(let i=0;i<1600;i++)mesh.setMatrixAt(i,forestHiddenMatrix);mesh.instanceMatrix.needsUpdate=true;scene.add(mesh);
-    worldNature.grass={mesh,keys:new Array(1600).fill(''),jobs:[],x:Infinity,z:Infinity,dummy:new THREE.Object3D()};
+    const mesh=new THREE.InstancedMesh(geo,mat,GRASS_COUNT);mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.frustumCulled=false;
+    for(let i=0;i<GRASS_COUNT;i++)mesh.setMatrixAt(i,forestHiddenMatrix);mesh.instanceMatrix.needsUpdate=true;scene.add(mesh);
+    worldNature.grass={mesh,keys:new Array(GRASS_COUNT).fill(''),jobs:[],x:Infinity,z:Infinity,dummy:new THREE.Object3D()};
 }
 function updateNatureGrass(p){
     if(!worldNature.grass)createNatureGrass();const grass=worldNature.grass;
     grass.mesh.visible=p.y-terrainHeightAt(p.x,p.z)<100;if(!grass.mesh.visible)return;
-    const cx=Math.floor(p.x/3.5),cz=Math.floor(p.z/3.5);
+    const cx=Math.floor(p.x/GRASS_CELL),cz=Math.floor(p.z/GRASS_CELL),R=Math.floor(GRASS_GRID/2.9);
     if(cx!==grass.x||cz!==grass.z){grass.x=cx;grass.z=cz;grass.jobs=[];
-        for(let z=cz-20;z<cz+20;z++)for(let x=cx-20;x<cx+20;x++){const index=((x%40+40)%40)+((z%40+40)%40)*40,key=x+':'+z;if(grass.keys[index]!==key)grass.jobs.push({x,z,index,key,d:(x-cx)**2+(z-cz)**2});}grass.jobs.sort((a,b)=>a.d-b.d);}
+        for(let z=cz-R;z<cz+R;z++)for(let x=cx-R;x<cx+R;x++){const index=((x%GRASS_GRID+GRASS_GRID)%GRASS_GRID)+((z%GRASS_GRID+GRASS_GRID)%GRASS_GRID)*GRASS_GRID,key=x+':'+z;if(grass.keys[index]!==key)grass.jobs.push({x,z,index,key,d:(x-cx)**2+(z-cz)**2});}grass.jobs.sort((a,b)=>a.d-b.d);}
     let changed=false;
     for(let n=0;n<worldNature.grassBudget&&grass.jobs.length;n++){
-        const job=grass.jobs.shift(),r=hash2(job.x,job.z),x=(job.x+.15+r*.7)*3.5,z=(job.z+.15+hash2(job.z+71,job.x)*.7)*3.5,y=terrainHeightAt(x,z);
+        const job=grass.jobs.shift(),r=hash2(job.x,job.z),x=(job.x+.15+r*.7)*GRASS_CELL,z=(job.z+.15+hash2(job.z+71,job.x)*.7)*GRASS_CELL,y=terrainHeightAt(x,z);
         const clear=y<1050&&naturePointIsClear(x,z,1.1)&&(natureSettlementMask(x,z)<.1||naturePathDistance(x,z)>6)&&Math.abs(terrainHeightAt(x+2,z)-y)<1&&Math.abs(terrainHeightAt(x,z+2)-y)<1;
         if(clear){grass.dummy.position.set(x,y-.04,z);grass.dummy.rotation.set(0,r*Math.PI*2,0);grass.dummy.scale.set(.8+r*.7,.65+r*.7,.8+r*.7);grass.dummy.updateMatrix();grass.mesh.setMatrixAt(job.index,grass.dummy.matrix);}else grass.mesh.setMatrixAt(job.index,forestHiddenMatrix);
         grass.keys[job.index]=job.key;changed=true;
@@ -2605,9 +2861,19 @@ function createForestCluster(cx,cz,radius){
     forestClusters.push({x:cx,z:cz,r:radius,trees:group,blobs,seed});
 }
 function createForests(){
-    for(let i=0;i<CFG.forestClusterCount;i++){
-        const a=Math.random()*Math.PI*2,r=7000+Math.random()*4200;
-        createForestCluster(Math.cos(a)*r,Math.sin(a)*r,170+Math.random()*300);
+    // Woodlands blanket the whole (much larger) landmass, not just a ring
+    // around the start city; keep them clear of cities and towns.
+    let made=0,tries=0;
+    while(made<CFG.forestClusterCount&&tries++<4000){
+        const a=Math.random()*Math.PI*2, r=2600+Math.random()*50000;
+        const x=Math.cos(a)*r, z=Math.sin(a)*r;
+        if(Math.hypot(x,z)>57000) continue;
+        let bad=false;
+        for(const c of CITY_CENTERS) if(Math.hypot(x-c.x,z-c.z)<CFG.cityRadius+1600){bad=true;break;}
+        if(!bad)for(const t of TOWN_CENTERS) if(Math.hypot(x-t.x,z-t.z)<(t.radius||CFG.townRadius)+900){bad=true;break;}
+        if(bad)continue;
+        createForestCluster(x,z,200+Math.random()*380);
+        made++;
     }
 }
 function createStreetTree(x,z,scale=1){const t=makeForestTree(x,z,scale,true);t.userData.urban=true;return t;}
@@ -2642,7 +2908,20 @@ function damageForestsInRadius(pos,radius){
         }
     }
 }
-function generateTownCenters(){let made=0,tries=0;while(made<CFG.townCount&&tries++<7000){const x=(Math.random()-.5)*(CFG.worldSize-9000),z=(Math.random()-.5)*(CFG.worldSize-9000);let bad=Math.hypot(x,z)>29000;for(const c of CITY_CENTERS)if(Math.hypot(x-c.x,z-c.z)<CFG.cityRadius+1400)bad=true;if(bad)continue;for(const t of TOWN_CENTERS)if(Math.hypot(x-t.x,z-t.z)<1050){bad=true;break;}if(bad)continue;createTown(x,z,made++);}}
+function generateTownCenters(){
+    let made=0,tries=0;
+    // Large towns seed first so small towns fill the remaining gaps.
+    const target=i=>i<CFG.largeTownCount?'large':'small';
+    while(made<CFG.townCount&&tries++<26000){
+        const kind=target(made), large=kind==='large';
+        const x=(Math.random()-.5)*(CFG.worldSize-14000),z=(Math.random()-.5)*(CFG.worldSize-14000);
+        let bad=Math.hypot(x,z)>53000;
+        for(const c of CITY_CENTERS)if(Math.hypot(x-c.x,z-c.z)<CFG.cityRadius+(large?2600:2000))bad=true;
+        for(const t of TOWN_CENTERS){const minD=(t.kind==='large'||large)?2900:1750;if(Math.hypot(x-t.x,z-t.z)<minD){bad=true;break;}}
+        if(bad)continue;
+        createTown(x,z,made++,kind);
+    }
+}
 
 
 // ─── IRREGULAR ROAD NETWORK / HIGHWAYS ───
@@ -2795,14 +3074,47 @@ function pickBuildingDestination(){
     return null;
 }
 
-function spawnNPC(isCop = false, isEnemy = false){
+// Population scaled per settlement: 120 per city, 40 per large town, 10 per small town + 200 dispersed.
+function spawnPopulation(){
+    const scale = VERY_LOW_MEM?0.35:DECENT_GPU?1:0.65;
+    const N=(n)=>Math.round(n*scale);
+    const place=(x,z)=>{if(terrainHeightAt(x,z)>1150)return false;if(pointIsBlocked(x,z,1.4))return false;spawnNPC(false,false,{x,z});return true;};
+    const sideStreet=()=>CFG.roadWidth*.5+2.5+Math.random()*7*(Math.random()<.5?-1:1);
+    for(const city of CITY_CENTERS){
+        const bs=CFG.blockSize,r=CFG.roadZoneRadius,R=CFG.cityRadius;
+        for(let i=0;i<N(120);i++){
+            const k=Math.round((Math.random()*2-1)*r/bs)*bs;
+            const extent=Math.sqrt(Math.max(0,R*R-k*k))-120;
+            const s=(Math.random()*2-1)*extent;
+            if(Math.random()<.5){for(let t=0;t<4;t++)if(place(city.x+s+(Math.random()-.5)*8,city.z+k+sideStreet()))break;}
+            else{for(let t=0;t<4;t++)if(place(city.x+k+sideStreet(),city.z+s+(Math.random()-.5)*8))break;}
+        }
+    }
+    for(const t of TOWN_CENTERS){
+        const n=t.kind==='large'?N(40):N(10),ext=(t.radius||CFG.townRadius)*.5;
+        for(let i=0;i<n;i++){
+            const u=(Math.random()*2-1)*ext,o=10+Math.random()*8;
+            if(Math.random()<.5)place(t.x+u,t.z+o*(Math.random()<.5?1:-1));
+            else place(t.x+o*(Math.random()<.5?1:-1),t.z+u);
+        }
+    }
+    for(let i=0;i<N(200);i++){
+        let x,z;
+        if(roadPatrolWaypoints.length&&Math.random()<.7){const wp=roadPatrolWaypoints[(Math.random()*roadPatrolWaypoints.length)|0];x=wp.x+(Math.random()-.5)*24;z=wp.z+(Math.random()-.5)*24;}
+        else{const a=Math.random()*6.283,rr=CFG.suburbRadius+Math.random()*(CFG.mountainInner-CFG.suburbRadius-300);x=Math.cos(a)*rr;z=Math.sin(a)*rr;}
+        for(let t=0;t<5;t++)if(place(x+(Math.random()-.5)*10,z+(Math.random()-.5)*10))break;
+    }
+}
+function spawnNPC(isCop = false, isEnemy = false, pos = null){
     const grp = new THREE.Group();
     const bodyMat = isCop ? SHARED.npcBodyCop : isEnemy ? SHARED.npcBodyEnemy : SHARED.npcBodyCiv;
     const pantsMat = isCop ? SHARED.npcPantsCop : SHARED.npcPants;
     const limbs = buildHumanoid(grp, bodyMat, SHARED.npcSkin, pantsMat);
 
     let x = 0, z = 0, tries = 0;
+    if(pos){ x=pos.x; z=pos.z; }
     do {
+        if(pos){ if(pointIsBlocked(x,z,1.4)){x+=(Math.random()-.5)*14;z+=(Math.random()-.5)*14;} if(!pointIsBlocked(x,z,1.4)||tries>4)break; tries++; continue; }
         if(isEnemy || isCop){
             // A quarter of patrols start out on the rural road network.
             const pool=(roadPatrolWaypoints.length&&Math.random()<.25)?roadPatrolWaypoints:sidewalkWaypoints;
@@ -2859,23 +3171,52 @@ function spawnCar(){
     const color = cols[Math.floor(Math.random()*cols.length)];
     if(carTemplates.has(color)) grp.copy(carTemplates.get(color),true);
     else {
-    const bm = makeEfficientMaterial({ color, roughness:.28, metalness:.68, envMapIntensity:1.35 });
-    const glass = SHARED.jetGlass;
-    const lower = new THREE.Mesh(new THREE.BoxGeometry(1.95,0.46,4.0), bm); lower.position.y=.48; lower.castShadow=true; grp.add(lower);
-    const hood = new THREE.Mesh(new THREE.BoxGeometry(1.82,0.28,1.08), bm); hood.position.set(0,.73,-1.32); hood.rotation.x=-.08; grp.add(hood);
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.48,.72,1.72), glass); cabin.position.set(0,.9,.05); cabin.rotation.x=-.02; grp.add(cabin);
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(1.5,.08,1.76), bm); roof.position.set(0,1.3,.05); grp.add(roof);
-    const trunk = new THREE.Mesh(new THREE.BoxGeometry(1.82,.3,.92), bm); trunk.position.set(0,.69,1.35); trunk.rotation.x=.06; grp.add(trunk);
-    const bumperF = new THREE.Mesh(new THREE.BoxGeometry(2.0,.16,.16), bm); bumperF.position.set(0,.31,-2.0); grp.add(bumperF);
-    const bumperR = new THREE.Mesh(new THREE.BoxGeometry(2.0,.16,.16), bm); bumperR.position.set(0,.31,2.0); grp.add(bumperR);
-    for(const sx of [-.92,.92]) for(const sz of [-1.4,1.4]){
-        const wheel = new THREE.Mesh(new THREE.CylinderGeometry(.34,.34,.20,12), SHARED.wheel); wheel.rotation.z=Math.PI/2; wheel.position.set(sx,.34,sz); wheel.castShadow=true; grp.add(wheel);
+    const bm = makeEfficientMaterial({ color, roughness:.26, metalness:.72, envMapIntensity:1.45 });
+    const glassDark = makeEfficientMaterial({ color:0x101820, roughness:.12, metalness:.4, envMapIntensity:1.8 });
+    const trimMat = makeEfficientMaterial({color:0x14161a,roughness:.55,metalness:.4});
+    const tireMat = makeEfficientMaterial({color:0x0d0e10,roughness:.92,metalness:.05});
+    const rimMat  = makeEfficientMaterial({color:0xc8ccd0,roughness:.22,metalness:.9,envMapIntensity:1.7});
+    const plateMat= makeEfficientMaterial({color:0xe8e8e0,roughness:.6,metalness:.1});
+    const lower = new THREE.Mesh(new THREE.BoxGeometry(1.96,0.52,4.1), bm); lower.position.y=.48; lower.castShadow=true; grp.add(lower);
+    const belt = new THREE.Mesh(new THREE.BoxGeometry(1.84,0.30,3.78), bm); belt.position.y=.8; grp.add(belt);
+    const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.7,.16,3.6), trimMat); chassis.position.y=.24; grp.add(chassis);
+    const hood = new THREE.Mesh(new THREE.BoxGeometry(1.8,0.2,1.18), bm); hood.position.set(0,.93,-1.3); hood.rotation.x=-.05; grp.add(hood);
+    const trunk = new THREE.Mesh(new THREE.BoxGeometry(1.8,.26,.96), bm); trunk.position.set(0,.9,1.4); trunk.rotation.x=.05; grp.add(trunk);
+    // glass greenhouse: sloped windscreen, rear screen, dark side windows, roof
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.52,.6,1.5), glassDark); cabin.position.set(0,1.0,.08); grp.add(cabin);
+    const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.46,.6,.05), SHARED.jetGlass); windshield.position.set(0,1.0,-.72); windshield.rotation.x=-.48; grp.add(windshield);
+    const rearScreen = new THREE.Mesh(new THREE.BoxGeometry(1.42,.52,.05), SHARED.jetGlass); rearScreen.position.set(0,1.0,.82); rearScreen.rotation.x=.5; grp.add(rearScreen);
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(1.42,.08,1.55), bm); roof.position.set(0,1.32,.08); grp.add(roof);
+    for(const sx of [-0.78,0.78]){ const pillar=new THREE.Mesh(new THREE.BoxGeometry(.07,.62,1.5),bm); pillar.position.set(sx,1.02,.08); grp.add(pillar);
+        const sw=new THREE.Mesh(new THREE.BoxGeometry(.04,.4,.92),glassDark); sw.position.set(sx*1.02,1.02,-.2); grp.add(sw);
+        const mirror=new THREE.Mesh(new THREE.BoxGeometry(.12,.08,.18),trimMat); mirror.position.set(sx*1.06,1.06,-.72); grp.add(mirror); }
+    // door seams + handles + side trim
+    for(const sx of [-.99,.99]){ for(const sz of [-.35,.55]){ const seam=new THREE.Mesh(new THREE.BoxGeometry(.02,.44,.02),trimMat); seam.position.set(sx,.78,sz); grp.add(seam); }
+        for(const sz of [-.12,.78]){ const hnd=new THREE.Mesh(new THREE.BoxGeometry(.02,.04,.18),rimMat); hnd.position.set(sx,.92,sz); grp.add(hnd); }
+        const rocker=new THREE.Mesh(new THREE.BoxGeometry(.02,.1,3.4),trimMat); rocker.position.set(sx,.5,.0); grp.add(rocker); }
+    // bumpers, grille, number plates
+    const bumperF = new THREE.Mesh(new THREE.BoxGeometry(2.02,.2,.18), trimMat); bumperF.position.set(0,.3,-2.06); grp.add(bumperF);
+    const bumperR = new THREE.Mesh(new THREE.BoxGeometry(2.02,.2,.18), trimMat); bumperR.position.set(0,.3,2.06); grp.add(bumperR);
+    const grille = new THREE.Mesh(new THREE.BoxGeometry(1.1,.28,.06),trimMat); grille.position.set(0,.62,-2.05); grp.add(grille);
+    const plateF = new THREE.Mesh(new THREE.BoxGeometry(.5,.13,.03),plateMat); plateF.position.set(0,.42,-2.14); grp.add(plateF);
+    const plateR = plateF.clone(); plateR.position.set(0,.44,2.14); grp.add(plateR);
+    // wheels: black tire, silver rim, hubcap; front pair flagged for steering
+    for(const sx of [-.93,.93]) for(const sz of [-1.42,1.42]){
+        const wheel = new THREE.Group();
+        const tire = new THREE.Mesh(new THREE.CylinderGeometry(.36,.36,.24,14), tireMat); tire.rotation.z=Math.PI/2; tire.castShadow=true; wheel.add(tire);
+        const rim = new THREE.Mesh(new THREE.CylinderGeometry(.2,.2,.26,8), rimMat); rim.rotation.z=Math.PI/2; wheel.add(rim);
+        for(const ri of [-0.14,0.14]){ const hub=new THREE.Mesh(new THREE.CylinderGeometry(.06,.06,.28,8),trimMat); hub.rotation.z=Math.PI/2; hub.position.x=ri; wheel.add(hub); }
+        wheel.position.set(sx,.36,sz); grp.add(wheel);
         wheel.userData.frontWheel = sz < 0;
+        const arch=new THREE.Mesh(new THREE.TorusGeometry(.4,.04,6,14,Math.PI),trimMat);
+        arch.rotation.y=Math.PI/2; arch.position.set(sx*1.005,.42,sz); grp.add(arch);
     }
-    const headMat = makeEfficientMaterial({color:0xfff5cf,emissive:0xffe6a0,emissiveIntensity:2.0,roughness:.18});
-    for(const sx of [-.62,.62]){ const h=new THREE.Mesh(new THREE.BoxGeometry(.34,.16,.08),headMat); h.position.set(sx,.60,-1.99); grp.add(h); }
-    const tailMat = makeEfficientMaterial({color:0xff3b2f,emissive:0xff241a,emissiveIntensity:1.0});
-    for(const sx of [-.62,.62]){ const h=new THREE.Mesh(new THREE.BoxGeometry(.34,.16,.08),tailMat); h.position.set(sx,.57,1.99); grp.add(h); }
+    const exhaust=new THREE.Mesh(new THREE.CylinderGeometry(.05,.06,.3,8),trimMat); exhaust.rotation.x=Math.PI/2; exhaust.position.set(.55,.22,2.12); grp.add(exhaust);
+    const headMat = makeEfficientMaterial({color:0xfff5cf,emissive:0xffe6a0,emissiveIntensity:2.2,roughness:.18});
+    for(const sx of [-.66,.66]){ const h=new THREE.Mesh(new THREE.BoxGeometry(.4,.17,.08),headMat); h.position.set(sx,.7,-2.02); grp.add(h);
+        const fog=new THREE.Mesh(new THREE.CircleGeometry(.07,10),headMat); fog.position.set(sx,.38,-2.14); fog.rotation.y=Math.PI; grp.add(fog); }
+    const tailMat = makeEfficientMaterial({color:0xff3b2f,emissive:0xff241a,emissiveIntensity:1.2});
+    for(const sx of [-.7,.7]){ const h=new THREE.Mesh(new THREE.BoxGeometry(.46,.15,.08),tailMat); h.position.set(sx,.72,2.02); grp.add(h); }
     carTemplates.set(color,grp.clone(true));
     }
     const half = CFG.citySize/2 - 150;
@@ -2949,9 +3290,35 @@ function spawnMotorbike(x, z){
 }
 function spawnHelicopter(x, z, preset = 'utility', parked = false){
     const grp = new THREE.Group();
+    if(preset === 'drone'){
+        // Quadcopter drone: X-frame arms, four motor/rotor pods, camera gimbal.
+        const frameMat = makeEfficientMaterial({color:0x23272c,roughness:.45,metalness:.6,envMapIntensity:1.2});
+        const motorMat = makeEfficientMaterial({color:0x363c44,roughness:.4,metalness:.7,envMapIntensity:1.3});
+        const hub=new THREE.Mesh(new THREE.BoxGeometry(.62,.3,.62),frameMat); hub.position.y=.62; hub.castShadow=true; grp.add(hub);
+        const top=new THREE.Mesh(new THREE.BoxGeometry(.4,.16,.4),motorMat); top.position.y=.86; grp.add(top);
+        for(const [ax,az] of [[1,1],[1,-1],[-1,1],[-1,-1]]){
+            const arm=new THREE.Mesh(new THREE.BoxGeometry(1.25,.08,.08),frameMat);
+            arm.position.set(ax*.42,.66,az*.42); arm.rotation.y=-Math.PI/4; grp.add(arm);
+            const motor=new THREE.Mesh(new THREE.CylinderGeometry(.13,.13,.2,10),motorMat);
+            motor.position.set(ax*.92,.66,az*.92); grp.add(motor);
+            const rot1=new THREE.Mesh(new THREE.BoxGeometry(1.1,.02,.05),SHARED.rotor);
+            rot1.position.set(ax*.92,.79,az*.92); rot1.userData.isRotor=true; grp.add(rot1);
+            const rot2=new THREE.Mesh(new THREE.BoxGeometry(.05,.02,1.1),SHARED.rotor);
+            rot2.position.set(ax*.92,.79,az*.92); rot2.userData.isRotor=true; grp.add(rot2);
+            const skid=new THREE.Mesh(new THREE.BoxGeometry(.04,.28,.04),frameMat);
+            skid.position.set(ax*.92,.28,az*.92); grp.add(skid);
+        }
+        const rail1=new THREE.Mesh(new THREE.BoxGeometry(.1,.05,1.5),frameMat); rail1.position.set(.5,.12,0); grp.add(rail1);
+        const rail2=rail1.clone(); rail2.position.x=-.5; grp.add(rail2);
+        const gimbal=new THREE.Mesh(new THREE.SphereGeometry(.16,10,8),makeEfficientMaterial({color:0x111418,roughness:.3,metalness:.7}));
+        gimbal.position.set(0,.36,-.1); grp.add(gimbal);
+        const lens=new THREE.Mesh(new THREE.SphereGeometry(.07,8,8),makeEfficientMaterial({color:0x0a1422,emissive:0x18324f,emissiveIntensity:1.2}));
+        lens.position.set(0,.36,-.24); grp.add(lens);
+    }
     const heliMat = preset === 'gunship'
         ? makeEfficientMaterial({ color: 0x4f3933, roughness:.34, metalness:.62, envMapIntensity:1.35 })
         : SHARED.heliBody;
+    if(preset !== 'drone'){
     const body = new THREE.Mesh(new THREE.BoxGeometry(preset === 'gunship' ? 1.45 : 1.2, 0.6, preset === 'gunship' ? 2.8 : 2.4), heliMat);
     body.position.y = 0.35; body.castShadow = true; grp.add(body);
     const cockpit = new THREE.Mesh(new THREE.BoxGeometry(0.8,0.35,0.9), SHARED.heliGlass);
@@ -2974,13 +3341,14 @@ function spawnHelicopter(x, z, preset = 'utility', parked = false){
         grp.position.set(x, gy + (parked ? 8 : 55), z);
         parked = !!parked;
     }
+    }
     grp.userData = {
         type:'helicopter', preset, velocity:0, speed:0,
-        health: preset === 'gunship' ? 180 : 120,
-        maxHealth: preset === 'gunship' ? 180 : 120,
+        health: preset === 'gunship' ? 180 : preset === 'drone' ? 70 : 120,
+        maxHealth: preset === 'gunship' ? 180 : preset === 'drone' ? 70 : 120,
         rotorSpeed: .4 + Math.random()*.12,
-        camPos: new THREE.Vector3(0,1.1,-.65),
-        ai: { active: !parked, speed: preset === 'gunship' ? 2.5 : 3 + Math.random()*2, turnTimer: 0 },
+        camPos: new THREE.Vector3(0, preset==='drone'?1.5:1.1, -.65),
+        ai: { active: !parked, speed: preset === 'gunship' ? 2.5 : preset==='drone' ? 4.5 : 3 + Math.random()*2, turnTimer: 0 },
     };
     scene.add(grp); helicopters.push(grp);
     return grp;
@@ -2989,6 +3357,67 @@ function spawnJet(x, z, preset = 'fighter'){
     const P = JET_PRESETS[preset] || JET_PRESETS.fighter;
     const grp = new THREE.Group();
     if(jetTemplates.has(preset)) grp.copy(jetTemplates.get(preset),true);
+    else if(preset==='airliner'){
+    // ── Commercial airliner: long tube fuselage, window rows, swept wings,
+    //    four underwing turbofans, tall swept tail fin, tricycle gear. ──
+    const jetMat = makeEfficientMaterial({ color: P.color, roughness: 1 - P.shininess/160, metalness: 0.62, envMapIntensity: 1.5 });
+    const S = P.scale;
+    const fusL = 11.5*S, fusR = .82*S;
+    const fus = new THREE.Mesh(new THREE.CylinderGeometry(fusR*.96,fusR,fusL,18), jetMat);
+    fus.rotation.x=Math.PI/2; fus.position.y=1.15*S; fus.castShadow=true; grp.add(fus);
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(fusR,18,12), jetMat);
+    nose.scale.set(1,1,1.7); nose.position.set(0,1.15*S,-fusL*.5); grp.add(nose);
+    const tailCone = new THREE.Mesh(new THREE.ConeGeometry(fusR*.96,2.2*S,18), jetMat);
+    tailCone.rotation.x=Math.PI/2; tailCone.position.set(0,1.15*S,fusL*.5+1.1*S); grp.add(tailCone);
+    const belly = new THREE.Mesh(new THREE.SphereGeometry(fusR*.8,14,10), makeEfficientMaterial({color:0xbfc6cc,roughness:.55,metalness:.5}));
+    belly.scale.set(1,.5,2.6); belly.position.set(0,.78*S,.6*S); grp.add(belly);
+    // continuous window rows
+    const winMat=makeEfficientMaterial({color:0x101820,emissive:0x0c1620,emissiveIntensity:.8,roughness:.25,metalness:.2});
+    const winGeo=new THREE.PlaneGeometry(.22*S,.16*S), wins=new THREE.InstancedMesh(winGeo,winMat,fusL*2);
+    const wd=new THREE.Object3D(); let wi=0;
+    for(let side of [-1,1]) for(let z=-fusL*.42; z<fusL*.32; z+=.62*S){
+        wd.position.set(side*(fusR+.015*S),1.28*S,z); wd.rotation.y=side<0?Math.PI/2:-Math.PI/2; wd.scale.setScalar(S); wd.updateMatrix();
+        wins.setMatrixAt(wi++,wd.matrix); }
+    wins.count=wi; wins.frustumCulled=false; grp.add(wins);
+    // swept main wings
+    const wingShape=new THREE.Shape();
+    [[0,-1.0],[5.2*S,2.2*S],[5.2*S,2.9*S],[.7*S,1.1*S],[-.7*S,1.1*S],[-5.2*S,2.9*S],[-5.2*S,2.2*S]].forEach((p,i)=>i?wingShape.lineTo(p[0],p[1]):wingShape.moveTo(p[0],p[1]));
+    wingShape.closePath();
+    const wings=new THREE.Mesh(new THREE.ExtrudeGeometry(wingShape,{depth:.16*S,bevelEnabled:false}),jetMat);
+    wings.rotation.x=Math.PI/2; wings.position.y=.95*S; wings.castShadow=true; grp.add(wings);
+    // winglets
+    for(let side of [-1,1]){ const wl=new THREE.Mesh(new THREE.BoxGeometry(.12*S,.9*S,.5*S),jetMat);
+        wl.position.set(side*5.2*S,1.5*S,2.55*S); wl.rotation.x=side*.3; grp.add(wl); }
+    // turbofans (2 per wing)
+    const engMat=makeEfficientMaterial({color:0x39424c,roughness:.3,metalness:.85,envMapIntensity:1.6});
+    const fanMat=makeEfficientMaterial({color:0x15181c,roughness:.4,metalness:.7});
+    for(const [ex,ez] of [[-1.9,.4],[-3.4,1.2],[1.9,.4],[3.4,1.2]]){
+        const nacelle=new THREE.Mesh(new THREE.CylinderGeometry(.42*S,.42*S,1.5*S,12),engMat);
+        nacelle.rotation.x=Math.PI/2; nacelle.position.set(ex*S,.62*S,ez*S); grp.add(nacelle);
+        const fan=new THREE.Mesh(new THREE.CircleGeometry(.34*S,12),fanMat);
+        fan.position.set(ex*S,.62*S,ez*S-.76*S); fan.rotation.y=Math.PI; const fan2=fan.clone(); fan2.position.z=ez*S+.76*S; grp.add(fan,fan2);
+        const pylon=new THREE.Mesh(new THREE.BoxGeometry(.16*S,.55*S,.5*S),jetMat);
+        pylon.position.set(ex*S,.92*S,ez*S); grp.add(pylon);
+    }
+    // swept vertical stabiliser + horizontal stabilisers
+    const finShape=new THREE.Shape();
+    [[0,0],[1.5*S,0],[.7*S,1.9*S],[-.2*S,1.7*S]].forEach((p,i)=>i?finShape.lineTo(p[0],p[1]):finShape.moveTo(p[0],p[1]));
+    finShape.closePath();
+    const finGeo=new THREE.ExtrudeGeometry(finShape,{depth:.14*S,bevelEnabled:false}); finGeo.rotateY(Math.PI/2);
+    const fin=new THREE.Mesh(finGeo,jetMat); fin.position.set(0,1.25*S,fusL*.32); grp.add(fin);
+    for(let side of [-1,1]){ const hs=new THREE.Mesh(new THREE.BoxGeometry(2.2*S,.1*S,.8*S),jetMat);
+        hs.position.set(side*1.2*S,1.3*S,fusL*.42); hs.rotation.z=side*.12; grp.add(hs); }
+    // tricycle landing gear
+    for(const [gx,gz] of [[0,-fusL*.32],[-.9*S,.4*fusL],[.9*S,.4*fusL]]){
+        const strut=new THREE.Mesh(new THREE.CylinderGeometry(.05*S,.05*S,.7*S,6),SHARED.rotor);
+        strut.position.set(gx,.5*S,gz); grp.add(strut);
+        const wheel=new THREE.Mesh(new THREE.CylinderGeometry(.22*S,.22*S,.16*S,10),SHARED.wheel);
+        wheel.rotation.z=Math.PI/2; wheel.position.set(gx,.18*S,gz); grp.add(wheel);
+    }
+    const tail=new THREE.Mesh(new THREE.BoxGeometry(.1,1.1*S,.8*S),jetMat); // placeholder kept off
+    tail.visible=false; grp.add(tail);
+    jetTemplates.set(preset,grp.clone(true));
+    }
     else {
     const jetMat = makeEfficientMaterial({ color: P.color, roughness: 1 - P.shininess/160, metalness: 0.78, envMapIntensity: 1.6 });
     const S = P.scale;
@@ -3037,7 +3466,7 @@ function spawnJet(x, z, preset = 'fighter'){
         x=spawnJet.runway.position.x-27+(jets.length%4)*18; z=480;
     }
     grp.position.set(x,terrainHeightAt(x,z)+.4,z);
-    const hp = preset === 'stealth' ? 170 : preset === 'hypersonic' ? 130 : 150;
+    const hp = preset === 'airliner' ? 240 : preset === 'stealth' ? 170 : preset === 'hypersonic' ? 130 : 150;
     grp.userData = {
         type:'jet', preset, speed:0, velocity:0, health:hp, maxHealth:hp,
         rotorSpeed:0, camPos:new THREE.Vector3(0,.6+.65*P.scale,-1.3*P.scale), ai:{ active:false },
@@ -3619,9 +4048,11 @@ function applyCameraShake(amount){ shakeAmount = Math.max(shakeAmount, amount); 
 function createRealismFramework(host){
     const T = host.THREE, scene = host.scene, camera = host.camera;
     const tierMul = host.veryLowEnd ? .32 : host.lowEnd ? .6 : 1;
-    const CAP_SMOKE = host.veryLowEnd ? 150 : host.lowEnd ? 320 : 560;
-    const CAP_FIRE  = host.veryLowEnd ? 96 : host.lowEnd ? 200 : 360;
-    const CAP_FBALL = 12, CAP_WALL = host.veryLowEnd ? 6 : 16;
+    const CAP_SMOKE = host.veryLowEnd ? 200 : host.lowEnd ? 440 : 780;
+    const CAP_FIRE  = host.veryLowEnd ? 110 : host.lowEnd ? 240 : 430;
+    const CAP_FBALL = 14, CAP_WALL = host.veryLowEnd ? 6 : 16;
+    const CAP_FLARE = host.veryLowEnd ? 3 : 8;
+    const CAP_GFOG  = host.veryLowEnd ? 12 : host.lowEnd ? 24 : 42;
     const CAP_CHUNK = host.veryLowEnd ? 180 : host.lowEnd ? 380 : 660;
     const CAP_SHARD = host.veryLowEnd ? 110 : host.lowEnd ? 220 : 400;
     const FALL_CAP_PER_SPECIES = host.veryLowEnd ? 8 : 18;
@@ -3677,7 +4108,10 @@ function createRealismFramework(host){
             float hot=core*smoothstep(0.08,0.82,n);
             if(hot*vA<0.006) discard;
             vec3 col=vC*(0.55+1.9*hot)+vec3(1.0,0.85,0.55)*core*0.5;
-            gl_FragColor=vec4(col*(0.35+hot*1.5), hot*vA);
+            float dying=1.0-clamp(vA/max(0.001,0.95),0.0,1.0);
+            col=mix(col, vec3(0.16,0.045,0.005), dying*0.92);
+            float a=hot*vA;
+            gl_FragColor=vec4(col*(0.35+hot*1.5)*(1.0-dying*0.55), a);
             #include <tonemapping_fragment> #include <colorspace_fragment> }` });
     const fballMat = new T.ShaderMaterial({ transparent:true, depthWrite:false, blending:T.AdditiveBlending, side:T.DoubleSide,
         uniforms:{},
@@ -3736,6 +4170,83 @@ function createRealismFramework(host){
     const fire  = makePool(CAP_FIRE,  new T.IcosahedronGeometry(1,1), fireMat); fire.mesh.renderOrder = 5;
     const fballs = makePool(CAP_FBALL, new T.IcosahedronGeometry(1,2), fballMat); fballs.mesh.renderOrder = 5;
     const walls = makePool(CAP_WALL, wallGeo, wallMat); walls.mesh.renderOrder = 5;
+
+    // ── Brilliant detonation flare: camera-facing glare disc with light rays ──
+    const flareGeo = new T.PlaneGeometry(1,1);
+    const flareMat = new T.ShaderMaterial({ transparent:true, depthWrite:false, blending:T.AdditiveBlending, side:T.DoubleSide,
+        uniforms:{},
+        vertexShader:`attribute vec3 iColor; attribute float iAlpha; attribute float iSeed; attribute float iScale;
+            varying vec2 vUv2; varying vec3 vC; varying float vA; varying float vSeed;
+            void main(){ vUv2=uv*2.0-1.0; vC=iColor; vA=iAlpha; vSeed=iSeed;
+                vec4 wp=modelMatrix*instanceMatrix*vec4(0.,0.,0.,1.);
+                vec4 vp=viewMatrix*wp; vp.xy+=vUv2*iScale;
+                gl_Position=projectionMatrix*vp; }`,
+        fragmentShader:`varying vec2 vUv2; varying vec3 vC; varying float vA; varying float vSeed;
+            void main(){ float d=length(vUv2); float ang=atan(vUv2.y,vUv2.x);
+                float flick=0.82+0.18*sin(vSeed*37.0);
+                float r1=pow(0.5+0.5*sin(ang*14.0+vSeed*9.0),9.0);
+                float r2=pow(0.5+0.5*sin(ang*7.0-vSeed*4.0),12.0);
+                float core=pow(smoothstep(0.55,0.0,d),2.1);
+                float halo=pow(max(0.0,1.0-d),1.7);
+                float a=(core*1.25+halo*(0.16+r1*0.62+r2*0.34))*vA*flick;
+                if(a<0.004)discard;
+                vec3 col=vC*(core*2.0+halo*0.85)+vec3(1.0,0.97,0.92)*core;
+                gl_FragColor=vec4(col,min(0.98,a));
+                #include <tonemapping_fragment> #include <colorspace_fragment> }` });
+    const flareMesh=new T.InstancedMesh(flareGeo,flareMat,CAP_FLARE);
+    flareMesh.frustumCulled=false; flareMesh.renderOrder=9;
+    const flareCol=new T.InstancedBufferAttribute(new Float32Array(CAP_FLARE*3),3);
+    const flareAlp=new T.InstancedBufferAttribute(new Float32Array(CAP_FLARE),1);
+    const flareSeed=new T.InstancedBufferAttribute(new Float32Array(CAP_FLARE),1);
+    const flareScale=new T.InstancedBufferAttribute(new Float32Array(CAP_FLARE),1).setUsage(T.DynamicDrawUsage);
+    flareGeo.setAttribute('iColor',flareCol);flareGeo.setAttribute('iAlpha',flareAlp);flareGeo.setAttribute('iSeed',flareSeed);flareGeo.setAttribute('iScale',flareScale);
+    for(let i=0;i<CAP_FLARE;i++) flareMesh.setMatrixAt(i,HIDDEN);
+    flareMesh.instanceMatrix.needsUpdate=true; scene.add(flareMesh);
+    const flares=new Array(CAP_FLARE); for(let i=0;i<CAP_FLARE;i++) flares[i]={alive:false};
+    let flareCursor=0;
+    function spawnFlare(o){
+        let i=flareCursor; for(let k=0;k<CAP_FLARE;k++){ if(!flares[i].alive)break; i=(i+1)%CAP_FLARE; } flareCursor=(i+1)%CAP_FLARE;
+        flares[i]={alive:true,x:o.x,y:o.y,z:o.z,age:0,life:o.life||2,s0:o.s0||10,s1:o.s1||100,color:o.color||0xffffff,seed:Math.random()*40};
+        _p.set(o.x,o.y,o.z);_q.identity();_s.setScalar(1);_m4.compose(_p,_q,_s);flareMesh.setMatrixAt(i,_m4);
+        const c=new T.Color(o.color||0xffffff);flareCol.setXYZ(i,c.r,c.g,c.b);flareSeed.setX(i,flares[i].seed);flareAlp.setX(i,1);flareScale.setX(i,o.s0||10);
+        flareMesh.instanceMatrix.needsUpdate=true;
+    }
+    function updateFlares(dt){
+        let ch=false;
+        for(let i=0;i<CAP_FLARE;i++){ const p=flares[i]; if(!p.alive)continue; p.age+=dt;
+            if(p.age>=p.life){ p.alive=false; flareMesh.setMatrixAt(i,HIDDEN); flareAlp.setX(i,0); ch=true; continue; }
+            const ta=p.age/p.life, grow=Math.pow(Math.min(1,ta*2.2),.7);
+            flareScale.setX(i,p.s0+(p.s1-p.s0)*grow);
+            flareAlp.setX(i, Math.pow(Math.max(0,1-ta),1.6)); ch=true; }
+        if(ch){ flareScale.needsUpdate=true; flareAlp.needsUpdate=true; flareMesh.instanceMatrix.needsUpdate=true; }
+    }
+
+    // ── Low racing ground fog: flat dark dust sheets that hug the terrain ─────
+    const gfog = makePool(CAP_GFOG, puffGeo.clone(), smokeMat); gfog.mesh.renderOrder = 7;
+    function spawnGroundFog(o){
+        const i=gfog.alloc(), p=gfog.st[i];
+        p.alive=true; p.x=o.x;p.y=o.y;p.z=o.z; p.vx=o.vx||0;p.vz=o.vz||0;
+        p.r=o.r||6; p.maxR=o.maxR||60; p.vr=o.vr||4; p.age=0; p.life=o.life||50;
+        p.ys=o.ys||.22; p.alpha=o.alpha==null?.8:o.alpha;
+        p.col0=new T.Color(o.hotColor||0x3a3128); p.col1=new T.Color(o.col||0x6b6155); p.seed=Math.random()*40;
+        gfog.seed.setX(i,p.seed); gfog.writeColor(i,o.hotColor||0x3a3128); return p;
+    }
+    function updateGroundFog(dt,windX,windZ){
+        for(let i=0;i<CAP_GFOG;i++){ const p=gfog.st[i]; if(!p.alive)continue; p.age+=dt;
+            if(p.age>=p.life){ p.alive=false; gfog.mesh.setMatrixAt(i,HIDDEN); gfog.alp.setX(i,0); continue; }
+            p.vx*=Math.exp(-.045*dt); p.vz*=Math.exp(-.045*dt);
+            p.vx+=(windX-p.vx)*Math.min(1,.012*dt); p.vz+=(windZ-p.vz)*Math.min(1,.012*dt);
+            p.x+=p.vx*dt; p.z+=p.vz*dt;
+            p.r=Math.min(p.maxR,p.r+p.vr*dt);
+            p.y=host.getTerrainHeight(p.x,p.z)+p.r*p.ys*.55;
+            const ta=p.age/p.life, appear=T.MathUtils.smoothstep(ta,0,.06), fade=ta>.55?Math.max(0,1-(ta-.55)/.45):1;
+            gfog.alp.setX(i,p.alpha*appear*fade);
+            const c=_tmpC.copy(p.col0).lerp(p.col1,Math.min(1,ta*.7)); gfog.col.setXYZ(i,c.r,c.g,c.b);
+            _p.set(p.x,p.y,p.z);_q.identity();_s.set(p.r,p.r*p.ys,p.r);_m4.compose(_p,_q,_s);gfog.mesh.setMatrixAt(i,_m4);
+        }
+        gfog.mesh.instanceMatrix.needsUpdate=true; gfog.alp.needsUpdate=true; if(gfog.col)gfog.col.needsUpdate=true;
+    }
+
 
     // -- 3D material-aware fracture debris -------------------------------------
     const FRACTURE_COLORS = {
@@ -3854,8 +4365,10 @@ function createRealismFramework(host){
     function spawnFireball(o){
         const i=fballs.alloc(), p=fballs.st[i];
         p.alive=true; p.x=o.x;p.y=o.y;p.z=o.z; p.vy=o.vy||0; p.r0=o.r0||4; p.rMax=o.rMax||40; p.grow=o.grow||.7;
-        p.age=0; p.life=o.life||3; p.seed=Math.random()*40; p.colHex=o.color||0xff7a22;
+        p.age=-(o.delay||0); p.life=o.life||3; p.seed=Math.random()*40; p.colHex=o.color||0xff7a22;
+        p.grounded=!!o.grounded; p.groundY=o.groundY!==undefined?o.groundY:o.y; p.contact=o.contact||0;
         fballs.seed.setX(i,p.seed); fballs.writeColor(i,p.colHex);
+        if(o.delay) fballs.mesh.setMatrixAt(i,HIDDEN);
         return p;
     }
     function spawnWall(o){
@@ -3888,19 +4401,22 @@ function createRealismFramework(host){
         // keep feeding the plume instead of simply vanishing.
         for(let i=0;i<CAP_FIRE;i++){ const p=fire.st[i]; if(!p.alive) continue; p.age+=dt;
             if(p.age>=p.life){ p.alive=false; fire.mesh.setMatrixAt(i,HIDDEN); fire.alp.setX(i,0);
-                if(p.chain) spawnSmoke({x:p.x,y:p.y,z:p.z,vx:p.vx*.5,vy:p.vy*.35,vz:p.vz*.5,r:p.r*.9,maxR:p.maxR*3.2,vr:p.vr*.5,life:6+Math.random()*6,alpha:.72,hot:.85,buoy:1.2,hotColor:0x241d18,col:0x5c5650});
+                if(p.chain) spawnSmoke({x:p.x,y:p.y,z:p.z,vx:p.vx*.5,vy:p.vy*.35,vz:p.vz*.5,r:p.r*.9,maxR:p.maxR*3.4,vr:p.vr*.5,life:7+Math.random()*7,alpha:.82,hot:.9,buoy:1.25,hotColor:0x161009,col:0x2e2823});
                 continue; }
             p.vy+=11*dt; p.vx+=(windX-p.vx)*Math.min(1,.25*dt); p.vz+=(windZ-p.vz)*Math.min(1,.25*dt);
             p.x+=p.vx*dt; p.y+=p.vy*dt; p.z+=p.vz*dt;
             p.r=Math.min(p.maxR, p.r+p.vr*1.25*dt);
-            const ta=p.age/p.life; fire.alp.setX(i,p.alpha*(1-ta*.55));
+            const ta=p.age/p.life; const ff=ta<.5?1:Math.max(.02,1-(ta-.5)/.5); fire.alp.setX(i,p.alpha*ff);
             setPuffMatrix(fire,i,p,p.r);
         }
         for(let i=0;i<CAP_FBALL;i++){ const p=fballs.st[i]; if(!p.alive) continue; p.age+=dt;
+            if(p.age<0){ continue; }
             if(p.age>=p.life){ p.alive=false; fballs.mesh.setMatrixAt(i,HIDDEN); fballs.alp.setX(i,0); continue; }
             p.y+=p.vy*dt;
             const grow=T.MathUtils.smoothstep(p.age/p.grow,0,1);
             const r=p.r0+(p.rMax-p.r0)*grow;
+            // Ground-contact fireballs stay anchored to the earth while hot, then lift.
+            if(p.grounded && p.age<p.contact*p.life){ const floorY=p.groundY+r*.7; if(p.y<floorY)p.y=floorY; }
             const cool=p.age/p.life, fade=cool>.55?Math.max(0,1-(cool-.55)/.45):1;
             fballs.alp.setX(i, fade*(.55+.45*grow));
             const c=_tmpC.set(p.colHex).lerp(_tmpC2.set(0x5a1e08), Math.min(.8,cool*.9)); fballs.col.setXYZ(i,c.r,c.g,c.b);
@@ -3924,19 +4440,29 @@ function createRealismFramework(host){
         const big = nuke||moab||R>=95;
         const sc = nuke?2.6:moab?1.7:R>=220?1.25:R>=95?.85:.5; // visual scale band
         const gy = host.getTerrainHeight(pos.x,pos.z);
+        const fogDur = nuke?95:moab?70:big?38:0;
         const ev = { x:pos.x,y:Math.max(gy,pos.y||gy),z:pos.z, R, age:0, sc, big, nuke, moab, napalm,
-            columnDur: nuke?11:moab?8:big?6:2.8, life: nuke?20:moab?16:big?12:6,
-            stemAcc:0, frontTimer:0, fball:null, gy };
+            columnDur: nuke?15:moab?9:big?6:2.8, life: Math.max(nuke?22:moab?17:big?12:6, fogDur),
+            stemAcc:0, frontTimer:0, fogTimer:0, cap2:false, fball:null, gy, fogDur };
         events.push(ev);
         impulseDebris(pos.x,pos.y||gy,pos.z,R*1.1,R*.28);
         // Blinding initial flash: white screen that fades with the fireball age.
         flashLevel = Math.max(flashLevel, nuke?1:moab?.92:big?.62:R>=40?.32:.14);
+        // Brilliant flare with actual light rays and glare (nukes blue-white, MOAB amber).
+        if(nuke) spawnFlare({x:pos.x,y:gy+R*.22,z:pos.z,s0:R*.3,s1:R*4.2,life:2.8,color:0xdceaff});
+        else if(moab) spawnFlare({x:pos.x,y:gy+R*.2,z:pos.z,s0:R*.25,s1:R*2.6,life:2.0,color:0xffd2a0});
+        else if(big) spawnFlare({x:pos.x,y:gy+R*.18,z:pos.z,s0:R*.18,s1:R*1.3,life:1.15,color:0xffe9c8});
         // Brief white-hot flash bubble.
-        spawnFireball({ x:pos.x,y:gy+R*.12,z:pos.z, r0:R*.04, rMax:R*(nuke?.55:big?.4:.3), grow:.22, life:nuke?.6:.4, color:0xffffff });
+        spawnFireball({ x:pos.x,y:gy+R*.12,z:pos.z, r0:R*.04, rMax:R*(nuke?.55:big?.4:.3), grow:.22, life:nuke?.6:.4, color:0xffffff, groundY:gy, grounded:true, contact:.9 });
         if(big){
-            // Massive incendiary fireball that rises slightly and cools.
-            ev.fball = spawnFireball({ x:pos.x,y:gy+R*.16,z:pos.z, r0:R*.08, rMax:R*(nuke?.46:moab?.38:.24),
-                grow:nuke?1.1:.8, life:nuke?4.2:moab?3.4:2.4, color:nuke?0xffd08a:0xff8a30, vy:R*(nuke?.10:.06) });
+            // Massive incendiary fireball that REMAINS IN CONTACT WITH THE GROUND
+            // while it grows, then lifts into the stem as it cools.
+            ev.fball = spawnFireball({ x:pos.x,y:gy+R*.1,z:pos.z, r0:R*.08, rMax:R*(nuke?.5:moab?.42:.26),
+                grow:nuke?1.0:.75, life:nuke?4.6:moab?3.6:2.4, color:nuke?0xffe0a8:moab?0xffa040:0xff8a30,
+                vy:R*(nuke?.11:moab?.07:.06), groundY:gy, grounded:true, contact:nuke?.62:moab?.55:.4 });
+            if(nuke){ // secondary hot lobe climbing just above the main fireball
+                spawnFireball({ x:pos.x,y:gy+R*.34,z:pos.z, r0:R*.06, rMax:R*.3, grow:.85, life:2.6, delay:.8, color:0xffc878, vy:R*.16, groundY:gy, grounded:false });
+            }
         }
         // ── 30-ft ground blast wave (scaled for smaller warheads) ──
         const wallH = nuke?9.2:moab?9.2:Math.max(2.2,R*.055);
@@ -3964,6 +4490,17 @@ function createRealismFramework(host){
                 vx:Math.cos(a)*R*(.4+Math.random()*.55), vz:Math.sin(a)*R*(.4+Math.random()*.55), vy:3+Math.random()*7,
                 r:R*.055*sc+2.8, maxR:R*(.42+Math.random()*.22), vr:R*.42, life:(nuke?24:big?17:10)*(.7+Math.random()*.6),
                 alpha:.62+Math.random()*.3, hot:.3, buoy:.5, hotColor:0x4a4038, col:0x8d8478 }); }
+        // Low dirt/smoke ground fog that races outward across the blast radius.
+        if(big){
+            const fogN=Math.round((nuke?70:moab?52:28)*tierMul);
+            for(let i=0;i<fogN;i++){ const a=i/fogN*Math.PI*2+Math.random()*.2, band=.1+Math.random()*.5;
+                const spd=R*(nuke?1.05:moab?.95:.75)*(1.4-band);
+                spawnGroundFog({ x:pos.x+Math.cos(a)*R*.08, y:gy+4, z:pos.z+Math.sin(a)*R*.08,
+                    vx:Math.cos(a)*spd, vz:Math.sin(a)*spd,
+                    r:R*(nuke?.07:moab?.06:.05)+Math.random()*6, maxR:R*(nuke?.3:moab?.28:.2)+12,
+                    vr:R*(nuke?.05:.04), life:(nuke?75:moab?60:32)+Math.random()*18, ys:.2+Math.random()*.1,
+                    alpha:.78+Math.random()*.16, hotColor:nuke?0x2c2925:0x33271c, col:nuke?0x6a6660:0x6f5d48 }); }
+        }
         // Immediate dense smoke shell around the core.
         const smokeN = Math.round((nuke?92:big?52:22)*tierMul);
         for(let i=0;i<smokeN;i++){ const a=Math.random()*6.283, rr=Math.pow(Math.random(),1.4)*R*.5;
@@ -3978,17 +4515,23 @@ function createRealismFramework(host){
         const groundChunks = Math.round((nuke?180:moab?120:big?60:R>=30?22:8)*tierMul);
         fracture(pos, pos, groundChunks, ['stone','dirt'], Math.min(52,R*.16), R>200?2.2:1.2);
         // Napalm leaves persistent fires that keep feeding smoke plumes.
-        if(napalm){ for(let i=0;i<Math.round(40*tierMul);i++){ const a=Math.random()*6.283,rr=Math.random()*R*1.05,x=pos.x+Math.cos(a)*rr,z=pos.z+Math.sin(a)*rr;
-            spawnFire({x,y:host.getTerrainHeight(x,z)+.6,z,r:1.2+Math.random()*1.6,maxR:6,vr:.8,life:3.5+Math.random()*4,vy:2.2,chain:true}); } }
+        const thermo = blastType==='thermobaric';
+        if(napalm||thermo){ const fn=napalm?40:24, fr=napalm?1.05:1.25; for(let i=0;i<Math.round(fn*tierMul);i++){ const a=Math.random()*6.283,rr=Math.random()*R*fr,x=pos.x+Math.cos(a)*rr,z=pos.z+Math.sin(a)*rr;
+            spawnFire({x,y:host.getTerrainHeight(x,z)+.6,z,r:1.2+Math.random()*1.8,maxR:7,vr:.8,life:3+Math.random()*4,vy:2.2,chain:true}); } }
         return ev;
     }
-    function eventMushroomCap(ev){ // when the fireball dies, leave an opaque cooling cap
-        const n=Math.round((ev.nuke?72:ev.moab?52:ev.big?32:14)*tierMul), top=ev.y+ev.R*(ev.nuke?.34:.22);
-        for(let i=0;i<n;i++){ const a=Math.random()*6.283, rr=Math.sqrt(Math.random())*ev.R*(ev.nuke?.42:.26);
-            spawnSmoke({ x:ev.x+Math.cos(a)*rr, y:top+(Math.random()-.5)*ev.R*.08, z:ev.z+Math.sin(a)*rr,
-                vx:Math.cos(a)*ev.R*.05, vz:Math.sin(a)*ev.R*.05, vy:ev.R*.03,
-                r:ev.R*.07+3, maxR:ev.R*(ev.nuke?.7:.58), vr:ev.R*.14, life:ev.nuke?40:28,
-                alpha:.9, hot:.5, buoy:.7, axis:{x:ev.x,z:ev.z}, axisPull:.06, hotColor:0x2b2622, col:0x66635f }); }
+    function eventMushroomCap(ev,altTop){ // when the fireball dies, leave an opaque cooling cap
+        const n=Math.round((ev.nuke?altTop?96:80:ev.moab?56:ev.big?32:14)*tierMul);
+        const top=altTop!==undefined?altTop:ev.gy+ev.R*(ev.nuke?.92:ev.moab?.55:.38);
+        const spread=ev.nuke?altTop?.62:.46:ev.moab?.4:.26;
+        const maxR=ev.nuke?altTop?1.05:.8:ev.moab?.55:.58;
+        const hot=ev.nuke?0x14110f:ev.moab?0x241b12:0x2b2622;
+        const cold=ev.nuke?0x454342:ev.moab?0x59483b:0x66635f;
+        for(let i=0;i<n;i++){ const a=Math.random()*6.283, rr=Math.sqrt(Math.random())*ev.R*spread;
+            spawnSmoke({ x:ev.x+Math.cos(a)*rr, y:top+(Math.random()-.5)*ev.R*(altTop?.14:.08), z:ev.z+Math.sin(a)*rr,
+                vx:Math.cos(a)*ev.R*.06, vz:Math.sin(a)*ev.R*.06, vy:ev.R*(altTop?.02:.08),
+                r:ev.R*(altTop?.09:.07)+3, maxR:ev.R*maxR, vr:ev.R*.13, life:ev.nuke?70:ev.moab?46:28,
+                alpha:.92, hot:.5, buoy:altTop?.35:.7, axis:{x:ev.x,z:ev.z}, axisPull:.05, hotColor:hot, col:cold }); }
     }
     function updateEvents(dt, windX, windZ){
         for(let e=events.length-1;e>=0;e--){ const ev=events[e]; ev.age+=dt;
@@ -3996,22 +4539,27 @@ function createRealismFramework(host){
             if(ev.fball && !ev.fball.alive){ eventMushroomCap(ev); ev.fball=null; }
             if(ev.age<ev.columnDur){
                 // Rising thermal column: puffs born along the stem as it climbs.
-                const rise = ev.R*(ev.nuke?.22:ev.moab?.18:ev.big?.14:.16);
-                const stemH = Math.min(ev.R*(ev.nuke?1.2:ev.moab?.85:ev.big?.5:4.4), ev.age*rise);
-                const rate=(ev.nuke?48:ev.big?28:14)*tierMul; ev.stemAcc+=dt*rate;
+                // Nukes build a very tall, diffuse grey-black column; MOABs a shorter brown one.
+                const rise = ev.R*(ev.nuke?.3:ev.moab?.22:ev.big?.14:.16);
+                const maxH = ev.R*(ev.nuke?2.7:ev.moab?1.25:ev.big?.5:4.4);
+                const stemH = Math.min(maxH, ev.age*rise);
+                const rate=(ev.nuke?62:ev.moab?44:ev.big?28:14)*tierMul; ev.stemAcc+=dt*rate;
                 while(ev.stemAcc>1){ ev.stemAcc-=1;
-                    const f=Math.random(); const yy=Math.pow(f,1.25)*stemH;
-                    const stemR=(3+yy*.06)*(ev.sc+.45);
-                    const a=Math.random()*6.283, rr=Math.random()*stemR;
+                    const f=Math.random(); const yy=Math.pow(f,1.18)*stemH;
+                    const stemR=(4+yy*(ev.nuke?.09:.06))*(ev.sc+.5);
+                    const a=Math.random()*6.283, rr=Math.pow(Math.random(),.7)*stemR;
+                    const swirl=(Math.random()-.5)*ev.R*.05;
                     spawnSmoke({ x:ev.x+Math.cos(a)*rr, y:ev.gy+yy, z:ev.z+Math.sin(a)*rr,
-                        vx:(Math.random()-.5)*ev.R*.04, vz:(Math.random()-.5)*ev.R*.04, vy:rise*.6+Math.random()*6,
-                        r:stemR*(.75+Math.random()*.5), maxR:stemR*7+ev.R*.14, vr:6+ev.R*.04,
-                        life:(ev.nuke?36:ev.big?22:12)*(.7+Math.random()*.7), alpha:ev.nuke?.9:.84,
-                        hot:1-f*.6, buoy:1.45-f*.45, axis:{x:ev.x,z:ev.z}, axisPull:.42*(1-f),
-                        hotColor:0x171310, col:ev.nuke?0x5f5d5c:0x595450 });
-                    if(ev.age<1.1 && Math.random()<.5) spawnFire({x:ev.x+Math.cos(a)*rr*1.4,y:ev.gy+yy*.4,z:ev.z+Math.sin(a)*rr*1.4,
+                        vx:Math.cos(a)*swirl+(Math.random()-.5)*ev.R*.03, vz:Math.sin(a)*swirl+(Math.random()-.5)*ev.R*.03, vy:rise*.55+Math.random()*7,
+                        r:stemR*(.8+Math.random()*.6), maxR:stemR*(ev.nuke?10:7.5)+ev.R*.16, vr:6+ev.R*.045,
+                        life:(ev.nuke?52:ev.moab?38:ev.big?22:12)*(.7+Math.random()*.7), alpha:ev.nuke?.82:ev.moab?.85:.84,
+                        hot:1-f*.6, buoy:1.5-f*.4, axis:{x:ev.x,z:ev.z}, axisPull:.34*(1-f)+.08,
+                        hotColor:ev.nuke?0x151210:ev.moab?0x20190f:0x171310, col:ev.nuke?0x4a4848:ev.moab?0x5b4a3a:0x595450 });
+                    if(ev.age<(ev.nuke?2.2:1.1) && Math.random()<(ev.nuke?.62:.5)) spawnFire({x:ev.x+Math.cos(a)*rr*1.4,y:ev.gy+yy*.4,z:ev.z+Math.sin(a)*rr*1.4,
                         r:2.5+Math.random()*2.5,maxR:ev.sc*10,vr:4,life:.9+Math.random()*.7,vy:9,color:0xff8030,chain:true});
                 }
+                // At top-out the nuke grows a second, broader high-altitude cap.
+                if(ev.nuke&&!ev.cap2&&stemH>=maxH*.96){ ev.cap2=true; eventMushroomCap(ev,ev.gy+maxH); }
                 // Dust kicked up by the advancing shock front.
                 ev.frontTimer-=dt;
                 if(ev.frontTimer<=0 && ev.age<(ev.big?3.2:1.4)){ ev.frontTimer=ev.big?.16:.22;
@@ -4022,9 +4570,35 @@ function createRealismFramework(host){
                             vx:Math.cos(a)*ev.R*.55, vz:Math.sin(a)*ev.R*.55, vy:2.5+Math.random()*4,
                             r:3.5+Math.random()*3.5,maxR:ev.R*.2+10,vr:ev.R*.28,life:8+Math.random()*6,alpha:.6,hot:0,buoy:.35,hotColor:0x4b4236,col:0x978c7c}); }
                 }
+                // The racing low ground-fog front (only for large warheads).
+                if(ev.fogDur){ ev.fogTimer-=dt;
+                    const raceDur=ev.nuke?13:ev.moab?10:6;
+                    if(ev.fogTimer<=0 && ev.age<raceDur){ ev.fogTimer=.16;
+                        const front=ev.R*(1-Math.exp(-ev.age*(ev.nuke?.3:ev.moab?.36:.5)))*1.02;
+                        const n=Math.round((ev.nuke?26:ev.moab?22:12)*tierMul);
+                        for(let i=0;i<n;i++){ const a=i/n*Math.PI*2+Math.random()*.3;
+                            spawnGroundFog({ x:ev.x+Math.cos(a)*front, y:ev.gy+4, z:ev.z+Math.sin(a)*front,
+                                vx:Math.cos(a)*ev.R*(ev.nuke?.5:ev.moab?.55:.45), vz:Math.sin(a)*ev.R*(ev.nuke?.5:ev.moab?.55:.45),
+                                r:ev.R*(ev.nuke?.06:ev.moab?.055:.045)+Math.random()*5, maxR:ev.R*(ev.nuke?.26:ev.moab?.24:.18)+10,
+                                vr:ev.R*.03, life:(ev.nuke?80:ev.moab?62:30)+Math.random()*20, ys:.16+Math.random()*.08,
+                                alpha:.8, hotColor:ev.nuke?0x262320:0x2f251a, col:ev.nuke?0x665f58:0x6c5a45 }); }
+                    }
+                }
             }
             if(ev.age>ev.life && !ev.fball) events.splice(e,1);
         }
+    }
+    // 1 inside the dust disk = visibility should be choked to a few hundred metres.
+    function groundFogVisibilityFactor(camPos){
+        let f=0;
+        for(const ev of events){ if(!ev.fogDur||ev.age>ev.fogDur) continue;
+            const cover=ev.age<3?ev.age/3:ev.age<ev.fogDur*.55?1:Math.max(0,1-(ev.age-ev.fogDur*.55)/(ev.fogDur*.45));
+            const front=ev.R*1.05;
+            const dx=camPos.x-ev.x, dz=camPos.z-ev.z, d=Math.hypot(dx,dz);
+            const inside=1-T.MathUtils.smoothstep(d,front*.35,front*1.05);
+            f=Math.max(f,cover*inside);
+        }
+        return f;
     }
 
     // -- Dynamic tree collapse ------------------------------------------------
@@ -4075,13 +4649,23 @@ function createRealismFramework(host){
         if(changed) for(const m of fallenMeshes) m.instanceMatrix.needsUpdate=true;
     }
 
+    let fogActive=false, fogSavedNear=0, fogSavedFar=0;
     function update(dt, wind){
         const t=Math.min(.05,dt);
+        const windX=wind?.x||Math.sin(performance.now()*.00011)*1.2, windZ=wind?.z||Math.cos(performance.now()*.00009)*0.7;
         if(flashOverlay){ flashLevel=Math.max(0,flashLevel-t*(flashLevel>.6?1.7:1.0)); flashOverlay.style.opacity=(flashLevel*.92).toFixed(3); }
-        updateEvents(t, wind?.x||Math.sin(performance.now()*.00011)*1.2, wind?.z||Math.cos(performance.now()*.00009)*0.7);
-        updatePools(t, wind?.x||Math.sin(performance.now()*.00011)*1.2, wind?.z||Math.cos(performance.now()*.00009)*0.7);
+        updateEvents(t, windX, windZ);
+        updatePools(t, windX, windZ);
+        updateFlares(t); updateGroundFog(t, windX, windZ);
         updateRigidPool(t); updateFallen(t);
-        if(scene.fog){ wallMat.uniforms.fogCol.value.copy(scene.fog.color); smokeMat.uniforms.fogCol.value.copy(scene.fog.color);
+        // Choke the player's visibility while inside the racing ground fog.
+        if(scene.fog){
+            const f=groundFogVisibilityFactor(camera.position);
+            if(f>.01){ if(!fogActive){ fogSavedNear=scene.fog.near; fogSavedFar=scene.fog.far; fogActive=true; }
+                scene.fog.near=T.MathUtils.lerp(fogSavedNear,26,f);
+                scene.fog.far=T.MathUtils.lerp(fogSavedFar,300,f);
+            } else if(fogActive){ scene.fog.near=fogSavedNear; scene.fog.far=fogSavedFar; fogActive=false; }
+            wallMat.uniforms.fogCol.value.copy(scene.fog.color); smokeMat.uniforms.fogCol.value.copy(scene.fog.color);
             smokeMat.uniforms.fogFar.value=scene.fog.far; wallMat.uniforms.fogFar.value=scene.fog.far; }
         if(host.sunDir){ smokeMat.uniforms.sunDir.value.copy(host.sunDir).normalize(); }
         if(host.sunColor){ smokeMat.uniforms.sunCol.value.copy(host.sunColor); }
@@ -4120,10 +4704,21 @@ function registerBlast(pos, radius, type){
 function createExplosion(pos, blastType){
     const cfg = EXPLOSIONS[blastType];
     if(!cfg) return;
-    const isBig = blastType === 'bomb' || blastType === 'missile' || blastType === 'heavyMissile' || blastType === 'moab' || blastType === 'nuke';
+    const isBig = blastType === 'bomb' || blastType === 'missile' || blastType === 'heavyMissile' || blastType === 'moab' || blastType === 'nuke' || blastType === 'thermobaric';
     createRealisticExplosion(pos, cfg, { isBig, blastType, thermo:true }); // flash light, scorch, dust rings
     if(realismFX) realismFX.detonate(pos, cfg, blastType); // thermodynamic cloud/fire/wall/debris
     queueExplosionGameplay(pos, cfg, blastType); // preserves original damage/building/forest timing exactly
+    if(blastType === 'cluster'){ // canister bursts: bomblets rain over a wide footprint
+        const n = 14;
+        for(let i=0;i<n;i++){
+            const a=Math.random()*Math.PI*2, up=40+Math.random()*55, out=55+Math.random()*85;
+            const mesh=new THREE.Mesh(new THREE.SphereGeometry(0.22,8,6), makeEfficientMaterial({color:0xddaa44,emissive:0xff5511,emissiveIntensity:1.1,roughness:.4}));
+            mesh.position.copy(pos); scene.add(mesh);
+            projectiles.push({ mesh, velocity:new THREE.Vector3(Math.cos(a)*out,up,Math.sin(a)*out),
+                life:9, fuse:0, gravity:20, blastType:'scatter', trailTimer:0, launchDelay:0,
+                launchDir:new THREE.Vector3(), launchSpeed:0, launchGravity:20, hazardMarker:null });
+        }
+    }
 }
 
 // ─── EXPLOSION DAMAGE ───
@@ -4179,6 +4774,18 @@ function spawnProjectileWorld(w, overridePos, overrideQuat){
         nose.rotation.x = -Math.PI/2; nose.position.z = -0.47; projMesh.add(nose);
     } else if(w.name === 'Grenade'){
         projMesh = new THREE.Mesh(new THREE.SphereGeometry(0.18,8,7), makeEfficientMaterial({ color: 0x3a5a3a, emissive: 0x1a3a1a, emissiveIntensity: .5, roughness:.55, metalness:.35 }));
+    } else if(w.name === 'Cluster'){
+        projMesh = new THREE.Group();
+        const b = new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.2,0.9,8), pmat); b.rotation.x = Math.PI/2; projMesh.add(b);
+        const band = new THREE.Mesh(new THREE.CylinderGeometry(0.21,0.21,0.12,8), makeEfficientMaterial({color:0x44502e,roughness:.5,metalness:.5})); band.rotation.x=Math.PI/2; projMesh.add(band);
+        const nose = new THREE.Mesh(new THREE.ConeGeometry(0.2,0.3,8), makeEfficientMaterial({color:0xffcc66,emissive:0xff7722,emissiveIntensity:1.2}));
+        nose.rotation.x = -Math.PI/2; nose.position.z=-0.6; projMesh.add(nose);
+    } else if(w.name === 'Thermo'){
+        projMesh = new THREE.Group();
+        const b = new THREE.Mesh(new THREE.CylinderGeometry(0.26,0.26,1.4,10), pmat); b.rotation.x = Math.PI/2; projMesh.add(b);
+        const nose = new THREE.Mesh(new THREE.SphereGeometry(0.27,10,8), makeEfficientMaterial({color:0xff7a30,emissive:0xff3c00,emissiveIntensity:1.3}));
+        nose.position.z=-0.75; projMesh.add(nose);
+        for(let i=0;i<4;i++){ const fin=new THREE.Mesh(new THREE.BoxGeometry(0.02,0.3,0.3),SHARED.rotor); fin.rotation.x=Math.PI/2; fin.rotation.y=i*Math.PI/2; fin.position.z=0.6; projMesh.add(fin); }
     } else if(w.name === 'Scatter'){
         projMesh = new THREE.Group();
         const b = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.08,0.5,6), pmat); b.rotation.x = Math.PI/2; projMesh.add(b);
@@ -4474,7 +5081,7 @@ const GradeShader = {
     `,
 };
 let composer = null, renderPass = null, bloomPass = null, outputPass = null, gradePass = null, ssaoPass = null;
-let currentGfxMode = 'medium';
+let currentGfxMode = VERY_LOW_MEM ? 'battery' : LOW_MEM ? 'low' : 'medium'; // RAM only suggests the default; K settings override it
 function buildComposer(mode){
     if(composer){ composer.dispose(); composer = null; renderPass = null; bloomPass = null; outputPass = null; gradePass = null; ssaoPass = null; }
     if(!['high','ultra','cinematic','rtx'].includes(mode)) return;
@@ -4973,9 +5580,18 @@ document.querySelectorAll('.shop-item').forEach(el=>{
             if(spend(900)){
                 jetpackOwned=true; jetpackActive=true; createJetpackModel(); showMessage('🛩 Jetpack equipped — V to toggle'); openShop();
             } else showMessage('Need $900');
-        } else if(item === 'jet' || item === 'interceptor' || item === 'bomber' || item === 'stealth' || item === 'hypersonic'){
-            const costs = { jet: 350, interceptor: 600, bomber: 800, stealth: 1000, hypersonic: 1400 };
-            const presets = { jet: 'fighter', interceptor: 'interceptor', bomber: 'bomber', stealth: 'stealth', hypersonic: 'hypersonic' };
+        } else if(item === 'drone'){
+            if(spend(450)){
+                const pos = getCameraWorldPos().clone();
+                const quat = getCameraWorldQuat().clone();
+                const fwd = new THREE.Vector3(0,0,-1).applyQuaternion(quat); fwd.y = 0; fwd.normalize();
+                const sp = pos.clone().add(fwd.multiplyScalar(12));
+                spawnHelicopter(sp.x, sp.z, 'drone');
+                playSound('pickup'); showMessage('🛸 Quadcopter drone delivered — press E or H'); openShop();
+            } else showMessage('Need $450');
+        } else if(item === 'jet' || item === 'interceptor' || item === 'bomber' || item === 'stealth' || item === 'hypersonic' || item === 'airliner'){
+            const costs = { jet: 350, interceptor: 600, bomber: 800, stealth: 1000, hypersonic: 1400, airliner: 1300 };
+            const presets = { jet: 'fighter', interceptor: 'interceptor', bomber: 'bomber', stealth: 'stealth', hypersonic: 'hypersonic', airliner: 'airliner' };
             const cost = costs[item];
             if(spend(cost)){
                 const pos = getCameraWorldPos().clone();
@@ -4988,12 +5604,14 @@ document.querySelectorAll('.shop-item').forEach(el=>{
                 showMessage('✈ ' + item.charAt(0).toUpperCase() + item.slice(1) + ' delivered — press E');
                 openShop();
             } else showMessage('Need $' + cost);
-        } else if(item === 'scatter' || item === 'fastmissile' || item === 'napalm' || item === 'moab'){
+        } else if(item === 'scatter' || item === 'fastmissile' || item === 'napalm' || item === 'moab' || item === 'cluster' || item === 'thermobaric'){
             const map = {
                 scatter:     { idx: 6, cost: 75,   ammo: 12, name: 'Scatter Missile' },
                 fastmissile: { idx: 7, cost: 300,  ammo: 10, name: 'Fast Missile' },
                 napalm:      { idx: 8, cost: 600,  ammo: 8,  name: 'Napalm Missile' },
                 moab:        { idx: 9, cost: 1800, ammo: 4,  name: 'MOAB' },
+                cluster:     { idx: 10, cost: 250, ammo: 6,  name: 'Cluster Missile' },
+                thermobaric: { idx: 11, cost: 1200, ammo: 5, name: 'Thermobaric Warhead' },
             };
             const m = map[item];
             if(spend(m.cost)){
@@ -5091,6 +5709,8 @@ document.addEventListener('keydown', (e)=>{
         case 'Digit8': switchWeapon(7); break;
         case 'Digit9': switchWeapon(8); break;
         case 'Digit0': switchWeapon(9); break;
+        case 'BracketLeft': switchWeapon(10); break;
+        case 'BracketRight': switchWeapon(11); break;
     }
 });
 document.addEventListener('keyup', (e)=>{
@@ -5344,7 +5964,7 @@ async function init(){
             ['static batching', () => batchStaticMeshes()],
             ['clouds', () => createVolumetricClouds()],
             ['field waypoints', () => buildFieldWaypoints()],
-            ['civilians', () => { for(let i=0;i<CFG.npcCount;i++) spawnNPC(false,false); }],
+            ['civilians', () => { spawnPopulation(); }],
             ['enemies', () => { for(let i=0;i<CFG.enemyCount;i++) spawnNPC(false,true); }],
             ['cops', () => { for(let i=0;i<CFG.copCount;i++) spawnNPC(true,false); }],
             ['cars', () => { for(let i=0;i<CFG.carCount;i++) spawnCar(); for(let i=0;i<6;i++) spawnMotorbike(); }],
@@ -5381,6 +6001,7 @@ async function init(){
         window.addEventListener('resize', resizeRenderer);
 
         applyGraphicsMode(currentGfxMode);
+        {const gs=document.getElementById('gfx-select'); if(gs) gs.value=currentGfxMode;}
         applyTimeOfDay(parseFloat(timeSlider.value));
 
         loadingText.textContent='FINISHING SOLID TERRAIN…';
@@ -5478,6 +6099,7 @@ function animate(){
     updatePooledEffects(dt);
     if(realismFX)realismFX.update(dt);
     updateQueuedExplosionGameplay(dt);
+    updateFallingPoles(dt);
 
     for(let i = activeBlasts.length - 1; i >= 0; i--){
         activeBlasts[i].ttl -= dt;
@@ -5573,13 +6195,13 @@ function animate(){
         if(p.hazardMarker) updateHazardMarker(p.hazardMarker, p.mesh.position);
 
         const bt = p.blastType;
-        if(bt === 'rocket' || bt === 'missile' || bt === 'heavyMissile' || bt === 'fastMissile' || bt === 'scatter'){
+        if(bt === 'rocket' || bt === 'missile' || bt === 'heavyMissile' || bt === 'fastMissile' || bt === 'scatter' || bt === 'cluster' || bt === 'thermobaric'){
             const vDir = p.velocity.clone().normalize();
             const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,-1), vDir);
             p.mesh.quaternion.slerp(q, 0.5);
         }
 
-        if(bt === 'rocket' || bt === 'missile' || bt === 'bomb' || bt === 'heavyMissile' || bt === 'fastMissile' || bt === 'moab'){
+        if(bt === 'rocket' || bt === 'missile' || bt === 'bomb' || bt === 'heavyMissile' || bt === 'fastMissile' || bt === 'moab' || bt === 'cluster' || bt === 'thermobaric'){
             p.trailTimer -= dt;
             if(p.trailTimer <= 0){
                 const heavy = (bt === 'missile' || bt === 'heavyMissile');
@@ -6059,24 +6681,31 @@ function animate(){
 
 // FRAME BUDGET: RAM alone cannot predict GPU speed. Adjust actual pixels using real, unclamped frame times.
 const performanceBudget={target:60,scale:.82,maxScale:.9,minScale:.48,elapsed:0,frames:0,slow:0,fast:0,fps:0,p95:0,times:new Float32Array(120),cursor:0,samples:0,auto:true};
-function budgetPixelRatio(){const maxPixels=VERY_LOW_MEM?650000:LOW_MEM?1100000:1800000;return Math.min(window.devicePixelRatio||1,performanceBudget.scale,Math.sqrt(maxPixels/Math.max(1,innerWidth*innerHeight)));}
+const GFX_PIXEL_BUDGET={battery:700000,low:1200000,medium:2000000,high:3200000,ultra:5000000,cinematic:6200000,rtx:7200000,'4k':Infinity};
+function budgetPixelRatio(){const maxPixels=GFX_PIXEL_BUDGET[currentGfxMode]||2000000;return Math.min(window.devicePixelRatio||1,performanceBudget.scale,Math.sqrt(maxPixels/Math.max(1,innerWidth*innerHeight)));}
 function disposeComposer(){if(composer){for(const p of composer.passes)p.dispose?.();composer.dispose();}composer=null;renderPass=null;bloomPass=null;outputPass=null;gradePass=null;ssaoPass=null;}
 function applyGraphicsMode(mode){
-    currentGfxMode=mode;const max={battery:.62,low:.78,medium:.95,high:1,ultra:1.08,cinematic:1.08,rtx:.92}[mode]||.85;
-    performanceBudget.maxScale=Math.min(max,LOW_MEM?.9:1.12);performanceBudget.scale=Math.min(.9,performanceBudget.maxScale);performanceBudget.slow=performanceBudget.fast=0;
+    currentGfxMode=mode;
+    // The K-settings choice is authoritative: 4K locks the render scale to the
+    // display's native pixel density; every other mode keeps adaptive scaling
+    // up to its own ceiling (RAM tiers no longer override the user's choice).
+    const max={battery:.62,low:.78,medium:.95,high:1,ultra:1.08,cinematic:1.08,rtx:.92,'4k':2.25}[mode]||.85;
+    if(mode==='4k'){ performanceBudget.auto=false; performanceBudget.maxScale=2.25; performanceBudget.scale=Math.min(window.devicePixelRatio||1,2.25); }
+    else { performanceBudget.auto=true; performanceBudget.maxScale=max; performanceBudget.scale=Math.min(max,.95); }
+    performanceBudget.slow=performanceBudget.fast=0;
     disposeComposer();
-    // Long-view clarity tiers: battery/low stay lean, medium up gets post FX.
-    const rd=VERY_LOW_MEM?4400:{battery:5000,low:5800,medium:8400,high:11200,ultra:13600,cinematic:15200,rtx:14200}[mode]||6500;
-    const dd=VERY_LOW_MEM?2600:{battery:3000,low:3800,medium:5600,high:7600,ultra:9400,cinematic:11200,rtx:10200}[mode]||4200;
+    // Long-view clarity tiers (explicit selection, independent of device RAM).
+    const rd={battery:5000,low:5800,medium:8400,high:11200,ultra:13600,cinematic:15200,rtx:14200,'4k':17500}[mode]||6500;
+    const dd={battery:3000,low:3800,medium:5600,high:7600,ultra:9400,cinematic:11200,rtx:10200,'4k':12800}[mode]||4200;
     CFG.renderDistance=rd;CFG.detailDistance=dd;CFG.cullDistance=rd;
-    const shadows=(mode==='ultra'||mode==='cinematic'||mode==='rtx'||(DECENT_GPU&&mode!=='battery'&&mode!=='low'))&&!VERY_LOW_MEM;
+    const shadows=!['battery','low'].includes(mode);
     renderer.shadowMap.enabled=shadows;
-    renderer.shadowMap.type=(mode==='rtx'||mode==='cinematic')?THREE.PCFSoftShadowMap:THREE.BasicShadowMap;sun.castShadow=shadows;
-    const sm=mode==='rtx'?2048:mode==='cinematic'?2048:mode==='ultra'?1024:mode==='high'?1024:512;
+    renderer.shadowMap.type=(mode==='rtx'||mode==='cinematic'||mode==='4k')?THREE.PCFSoftShadowMap:THREE.BasicShadowMap;sun.castShadow=shadows;
+    const sm=mode==='4k'?4096:mode==='rtx'||mode==='cinematic'?2048:mode==='ultra'||mode==='high'?1024:512;
     sun.shadow.mapSize.set(sm,sm);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null;}
     scene.environment=pmremRT?pmremRT.texture:null;
     scene.fog.near=rd*.25;scene.fog.far=rd;
-    if(['high','ultra','cinematic','rtx'].includes(mode)&&!VERY_LOW_MEM)buildComposer(mode);
+    if(['high','ultra','cinematic','rtx','4k'].includes(mode))buildComposer(mode);
     resizeRenderer();
     if(realismFX)realismFX.setFogFar(rd);
 }
@@ -6088,7 +6717,8 @@ function updatePerformanceBudget(rawMs){
     p.slow=p.fps<53?p.slow+1:0;p.fast=p.fps>58&&p.p95<19?p.fast+1:0;
     if(p.auto&&p.slow>=2&&p.scale>p.minScale){p.scale=Math.max(p.minScale,p.scale-.08);p.slow=0;resizeRenderer();}
     else if(p.auto&&p.fast>=7&&p.scale<p.maxScale){p.scale=Math.min(p.maxScale,p.scale+.04);p.fast=0;resizeRenderer();}
-    worldNature.grassBudget=p.fps<45?20:48;worldNature.generationBudgetMs=p.fps<40?1.2:2.2;
+    else if(!p.auto){p.scale=performanceBudget.maxScale>=2?Math.min(window.devicePixelRatio||1,2.25):p.scale;}
+    worldNature.grassBudget=p.fps<45?48:p.fps<55?90:150;worldNature.generationBudgetMs=p.fps<40?1.2:2.2;
     CFG.maxActiveNPCs=VERY_LOW_MEM?(p.fps<45?18:28):LOW_MEM?(p.fps<45?34:52):(p.fps<45?50:78);
     CFG.maxActiveCars=VERY_LOW_MEM?(p.fps<45?8:14):LOW_MEM?(p.fps<45?18:26):(p.fps<45?28:42);
     fpsCounterEl.textContent=Math.round(p.fps)+' FPS · '+Math.round(budgetPixelRatio()*100)+'%';fpsCounterEl.title='Measured frame rate · internal resolution. P95 '+p.p95.toFixed(1)+' ms. Target 60 FPS, hardware dependent.';
