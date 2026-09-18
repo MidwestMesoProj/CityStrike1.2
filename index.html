@@ -344,7 +344,10 @@ CFG.copCount=VERY_LOW_MEM?30:90;
 CFG.carCount=VERY_LOW_MEM?40:(DECENT_GPU?200:130);CFG.helicopterCount=VERY_LOW_MEM?8:14;
 CFG.farmCount=VERY_LOW_MEM?28:96;
 CFG.largeTownCount=VERY_LOW_MEM?8:18;CFG.smallTownCount=VERY_LOW_MEM?16:42;CFG.townCount=CFG.largeTownCount+CFG.smallTownCount;
-CFG.forestClusterCount=VERY_LOW_MEM?44:(DECENT_GPU?150:96);
+// Forest regions now cover 4.5x the area per cluster and occur twice as often.
+// Keep the tree density practical for the instanced chunk renderer while the woodland footprint expands.
+const FOREST_AREA_MULTIPLIER=4.5,FOREST_RADIUS_MULTIPLIER=Math.sqrt(FOREST_AREA_MULTIPLIER);
+CFG.forestClusterCount=VERY_LOW_MEM?88:(DECENT_GPU?300:192);
 CFG.forestTreesPerCluster=VERY_LOW_MEM?90:(DECENT_GPU?540:300);
 CFG.maxActiveNPCs=VERY_LOW_MEM?28:(DECENT_GPU?78:52);CFG.maxSimDistance=VERY_LOW_MEM?170:(DECENT_GPU?270:215);
 CFG.maxActiveCars=VERY_LOW_MEM?14:(DECENT_GPU?42:26);CFG.batchCell=VERY_LOW_MEM?1536:2600;
@@ -356,7 +359,7 @@ const CITY_CENTERS=(()=>{
     for(let i=0;i<spots.length;i++){const [gx,gz]=spots[i];out.push({id:'c'+i,name:names[i]+' City',x:gx*spacing,z:gz*spacing});}
     return out;
 })();
-const TOWN_CENTERS=[],HIGHWAY_PATHS=[],HIGHWAY_EXITS=[],CITY_RECORDS=[],farmCenters=[];
+const TOWN_CENTERS=[],HIGHWAY_PATHS=[],REGIONAL_ROAD_PATHS=[],HIGHWAY_EXITS=[],CITY_RECORDS=[],farmCenters=[];
 
 const WEAPONS = [
     { name:'Pistol',  damage:35,   reloadTime:0.35, auto:true,  color:0x60d8c0, ammo:9999, recoil:1.0, projectile:false },
@@ -489,8 +492,23 @@ function surfaceIndex(map,item,minX,minZ,maxX,maxZ){
 function surfaceQuery(map,x,z,w,d){const out=new Set(),S=surfaceWorld.cellSize;for(let iz=Math.floor(z/S);iz<=Math.floor((z+d)/S);iz++)for(let ix=Math.floor(x/S);ix<=Math.floor((x+w)/S);ix++){const a=map.get(ix+':'+iz);if(a)for(const item of a)out.add(item);}return out;}
 function registerSurfacePatch(x,z,w,d,kind,rotation=0){const p={x,z,w,d,kind,rotation},r=Math.hypot(w,d)*.5;surfaceWorld.patches.push(p);surfaceIndex(surfaceWorld.patchCells,p,x-r,z-r,x+r,z+r);surfaceWorld.revision++;}
 function createRoadSegment(ax,az,bx,bz,width,mat,shoulder){
-    const len=Math.hypot(bx-ax,bz-az);if(len<1)return;const r=width*.5+6;
-    const seg={ax,az,bx,bz,width,len};surfaceWorld.segments.push(seg);surfaceIndex(surfaceWorld.roadCells,seg,Math.min(ax,bx)-r,Math.min(az,bz)-r,Math.max(ax,bx)+r,Math.max(az,bz)+r);
+    const len=Math.hypot(bx-ax,bz-az);if(len<1)return null;const r=width*.5+6;
+    const seg={ax,az,bx,bz,width,len,trafficDisabled:false};surfaceWorld.segments.push(seg);surfaceIndex(surfaceWorld.roadCells,seg,Math.min(ax,bx)-r,Math.min(az,bz)-r,Math.max(ax,bx)+r,Math.max(az,bz)+r);return seg;
+}
+function roadProjection(seg,x,z){const dx=seg.bx-seg.ax,dz=seg.bz-seg.az,ll=dx*dx+dz*dz||1,t=Math.max(0,Math.min(1,((x-seg.ax)*dx+(z-seg.az)*dz)/ll)),px=seg.ax+dx*t,pz=seg.az+dz*t;return{t,x:px,z:pz,d:Math.hypot(x-px,z-pz)};}
+// Split roads at genuine junctions, so visible regional connections are usable by the traffic graph too.
+function attachRoadJunction(x,z,slop=2){
+    const snapshot=surfaceWorld.segments.slice();
+    for(const seg of snapshot){if(seg.trafficDisabled)continue;const q=roadProjection(seg,x,z);
+        if(q.t>.0008&&q.t<.9992&&q.d<=seg.width*.5+slop){seg.trafficDisabled=true;createRoadSegment(seg.ax,seg.az,q.x,q.z,seg.width);createRoadSegment(q.x,q.z,seg.bx,seg.bz,seg.width);}
+    }
+    return{x,z};
+}
+function addRegionalRoadPath(points,width=24){REGIONAL_ROAD_PATHS.push(points.map(p=>({x:p.x,z:p.z})));createRoadPath(points,width);}
+function nearestMainInterstate(x,z){
+    let best=null;
+    for(const seg of surfaceWorld.segments){if(seg.trafficDisabled||seg.width<CFG.highwayWidth-1)continue;const q=roadProjection(seg,x,z);if(!best||q.d<best.d)best={...q,seg};}
+    return best;
 }
 function createRoadPath(points,width){for(let i=1;i<points.length;i++)createRoadSegment(points[i-1].x,points[i-1].z,points[i].x,points[i].z,width);}
 function roadClearAt(x,z,pad=0){const reach=Math.max(1,pad+3),near=surfaceQuery(surfaceWorld.roadCells,x-reach,z-reach,reach*2,reach*2);for(const r of near)if(natureSegmentDistance(x,z,r.ax,r.az,r.bx,r.bz)<r.width*.5+pad+3)return false;return true;}
@@ -529,28 +547,44 @@ function buildHighwayNetwork(){
         HIGHWAY_EXITS.push({...edge,city:c.id,id:'exit-'+c.id});}
 }
 function createRoadNetworks(){buildIrregularRoadNetwork();buildHighwayNetwork();}
+function townRoadGateway(t,target){
+    const ext=(t.radius||CFG.townRadius)*.5,dx=target.x-t.x,dz=target.z-t.z;
+    return Math.abs(dx)>=Math.abs(dz)?{x:t.x+(dx<0?-ext:ext),z:t.z+30}:{x:t.x+30,z:t.z+(dz<0?-ext:ext)};
+}
+function settlementRoadGateway(node,target){return node.city?{x:node.x,z:node.z}:townRoadGateway(node,target);}
+function regionalBend(a,b,bend=260){const dx=b.x-a.x,dz=b.z-a.z,l=Math.hypot(dx,dz)||1;return{x:(a.x+b.x)*.5-dz/l*bend,z:(a.z+b.z)*.5+dx/l*bend};}
 function connectTownRoads(){
     for(const t of TOWN_CENTERS){
-        // Kind-scaled cross streets through the town.
+        // Kind-scaled cross streets through the town. The connector gateways land on these roads.
         const ext=(t.radius||CFG.townRadius)*.5;
         createRoadSegment(t.x-ext,t.z+30,t.x+ext,t.z+30,22);
         createRoadSegment(t.x+30,t.z-ext,t.x+30,t.z+ext,22);
         if(t.kind==='large'){createRoadSegment(t.x-ext,t.z-ext*.45,t.x+ext,t.z-ext*.45,18);createRoadSegment(t.x-ext*.45,t.z-ext,t.x-ext*.45,t.z+ext,18);}
     }
-    // Minimum spanning tree joins EVERY town and city into one road network.
+    // Split the city grid/ring at each centre, then give every city an explicit route to the
+    // crossing interstate. This makes the outer ring, city streets and national roads one network.
+    for(const c of CITY_CENTERS){
+        attachRoadJunction(c.x,c.z);
+        const hit=nearestMainInterstate(c.x,c.z);
+        if(hit&&hit.d>36){attachRoadJunction(hit.x,hit.z);const a={x:c.x,z:c.z},b={x:hit.x,z:hit.z};addRegionalRoadPath([a,regionalBend(a,b,720),b],46);}
+    }
+    // A minimum spanning tree joins every town to the already-connected city/interstate backbone.
     const nodes=[...CITY_CENTERS.map(c=>({x:c.x,z:c.z,city:true})),...TOWN_CENTERS];
     const linked=new Array(CITY_CENTERS.length).fill(true).concat(new Array(TOWN_CENTERS.length).fill(false));
     for(;;){
         let bi=-1,bj=-1,bd=Infinity;
-        for(let i=0;i<nodes.length;i++){if(!linked[i])continue;
-            for(let j=0;j<nodes.length;j++){if(linked[j])continue;
-                const d=(nodes[i].x-nodes[j].x)**2+(nodes[i].z-nodes[j].z)**2;if(d<bd){bd=d;bi=i;bj=j;}}}
-        if(bj<0)break;
-        linked[bj]=true;
-        const a=nodes[bj],b=nodes[bi],ext=(a.radius||CFG.townRadius)*.5+60;
-        const dx=b.x-a.x,dz=b.z-a.z,dl=Math.hypot(dx,dz)||1,ux=dx/dl,uz=dz/dl;
-        const start={x:a.x+ux*ext,z:a.z+uz*ext},mid={x:(start.x+b.x)/2+uz*320,z:(start.z+b.z)/2-ux*320};
-        createRoadPath([start,mid,b],a.city||b.city?26:20);
+        for(let i=0;i<nodes.length;i++){if(!linked[i])continue;for(let j=0;j<nodes.length;j++){if(linked[j])continue;
+            const d=(nodes[i].x-nodes[j].x)**2+(nodes[i].z-nodes[j].z)**2;if(d<bd){bd=d;bi=i;bj=j;}}}
+        if(bj<0)break;linked[bj]=true;
+        const a=nodes[bj],b=nodes[bi],start=settlementRoadGateway(a,b),end=settlementRoadGateway(b,a);
+        attachRoadJunction(start.x,start.z);attachRoadJunction(end.x,end.z);
+        addRegionalRoadPath([start,regionalBend(start,end,220),end],a.city||b.city?26:20);
+    }
+    // Farms receive an access road into that same backbone rather than becoming isolated destinations.
+    const hubs=[...CITY_CENTERS.map(c=>({x:c.x,z:c.z,city:true})),...TOWN_CENTERS];
+    for(const farm of farmCenters){let hub=hubs[0],d2=Infinity;for(const candidate of hubs){const d=(candidate.x-farm.x)**2+(candidate.z-farm.z)**2;if(d<d2){d2=d;hub=candidate;}}
+        const start={x:farm.x,z:farm.z+105},end=settlementRoadGateway(hub,start);attachRoadJunction(end.x,end.z);
+        addRegionalRoadPath([start,regionalBend(start,end,150),end],18);
     }
     surfaceWorld.revision++;
 }
@@ -3030,6 +3064,7 @@ function _buildBirchFarGeo(){const trunk=new THREE.CylinderGeometry(.1,.2,8,4).t
 function _buildMapleFarGeo(){const trunk=new THREE.CylinderGeometry(.2,.42,5.5,4).translate(0,2.8,0).toNonIndexed(),crown=new THREE.IcosahedronGeometry(1,0).scale(3.3,3.1,3).translate(0,6.9,0),g=mergeGeometries([trunk,crown],true);trunk.dispose();crown.dispose();return g;}
 const TREE_FAR_GEOS=[_buildOakFarGeo(),_buildPineFarGeo(),_buildBirchFarGeo(),_buildMapleFarGeo()].slice(0,TREE_SPECIES_COUNT);
 const TREE_FAR_GEO=TREE_FAR_GEOS[0];
+const FOREST_CHUNK_SIZE=VERY_LOW_MEM?1100:1600;
 const forestChunks=new Map(),forestHiddenMatrix=new THREE.Matrix4().makeScale(0,0,0),forestLastPosition=new THREE.Vector3(Infinity,Infinity,Infinity);
 let forestRoadStamp=-1,forestRenderDistance=0;
 let treeInstances=null;
@@ -3051,8 +3086,8 @@ function makeForestTree(x,z,scale=1,urban=false){
 function finalizeTreeInstances(){
     if(treeInstances||!forestTrees.length)return;
     treeInstances=new THREE.Group();treeInstances.name='Chunked forest';scene.add(treeInstances);
-    for(const t of forestTrees){const x=Math.floor(t.position.x/640),z=Math.floor(t.position.z/640),key=x+':'+z;
-        if(!forestChunks.has(key))forestChunks.set(key,{x:x*640+320,z:z*640+320,trees:[]});
+    for(const t of forestTrees){const x=Math.floor(t.position.x/FOREST_CHUNK_SIZE),z=Math.floor(t.position.z/FOREST_CHUNK_SIZE),key=x+':'+z;
+        if(!forestChunks.has(key))forestChunks.set(key,{x:x*FOREST_CHUNK_SIZE+FOREST_CHUNK_SIZE*.5,z:z*FOREST_CHUNK_SIZE+FOREST_CHUNK_SIZE*.5,trees:[]});
         const chunk=forestChunks.get(key);t.userData.chunkKey=key;t.userData.chunkIndex=chunk.trees.length;chunk.trees.push(t);
     }
     const q=new THREE.Quaternion(),sc=new THREE.Vector3(),color=new THREE.Color();
@@ -3135,19 +3170,18 @@ function createForestCluster(cx,cz,radius){
     forestClusters.push({x:cx,z:cz,r:radius,trees:group,blobs,seed});
 }
 function createForests(){
-    // Woodlands blanket the whole (much larger) landmass, not just a ring
-    // around the start city; keep them clear of cities and towns.
+    // Every cluster has 4.5x the former footprint (radius scaled by sqrt(4.5)) and the count is doubled.
+    // Exclusions grow with the woodland radius, keeping city and town streets forest-free.
     let made=0,tries=0;
-    while(made<CFG.forestClusterCount&&tries++<4000){
-        const a=Math.random()*Math.PI*2, r=2600+Math.random()*(CFG.worldSize*.43-2600);
-        const x=Math.cos(a)*r, z=Math.sin(a)*r;
-        if(Math.hypot(x,z)>CFG.worldSize*.45) continue;
+    while(made<CFG.forestClusterCount&&tries++<9000){
+        const radius=(390+Math.random()*720)*FOREST_RADIUS_MULTIPLIER;
+        const a=Math.random()*Math.PI*2,r=2600+Math.random()*(CFG.worldSize*.43-2600);
+        const x=Math.cos(a)*r,z=Math.sin(a)*r;
+        if(Math.hypot(x,z)>CFG.worldSize*.45-radius*.35)continue;
         let bad=false;
-        for(const c of CITY_CENTERS) if(Math.hypot(x-c.x,z-c.z)<CFG.cityRadius+1450){bad=true;break;}
-        if(!bad)for(const t of TOWN_CENTERS) if(Math.hypot(x-t.x,z-t.z)<(t.radius||CFG.townRadius)+1200){bad=true;break;}
-        if(bad)continue;
-        createForestCluster(x,z,390+Math.random()*720);
-        made++;
+        for(const c of CITY_CENTERS)if(Math.hypot(x-c.x,z-c.z)<CFG.cityRadius+radius+420){bad=true;break;}
+        if(!bad)for(const t of TOWN_CENTERS)if(Math.hypot(x-t.x,z-t.z)<(t.radius||CFG.townRadius)+radius*.82+300){bad=true;break;}
+        if(bad)continue;createForestCluster(x,z,radius);made++;
     }
 }
 function createStreetTree(x,z,scale=1){const t=makeForestTree(x,z,scale,true);t.userData.urban=true;return t;}
@@ -3505,7 +3539,7 @@ const highwayCars=[],roadTrafficGraph=new Map();
 function trafficNodeKey(x,z){return Math.round(x/12)+':'+Math.round(z/12);}
 function buildTrafficRoadGraph(){
     roadTrafficGraph.clear();
-    for(const seg of surfaceWorld.segments){for(const [x,z,end] of [[seg.ax,seg.az,0],[seg.bx,seg.bz,1]]){const key=trafficNodeKey(x,z);let links=roadTrafficGraph.get(key);if(!links)roadTrafficGraph.set(key,links=[]);links.push({seg,end});}}
+    for(const seg of surfaceWorld.segments){if(seg.trafficDisabled)continue;for(const [x,z,end] of [[seg.ax,seg.az,0],[seg.bx,seg.bz,1]]){const key=trafficNodeKey(x,z);let links=roadTrafficGraph.get(key);if(!links)roadTrafficGraph.set(key,links=[]);links.push({seg,end});}}
 }
 function trafficSignalAllows(h,x,z,now){
     const city=getNearestCity(x,z);if(city.distance>CFG.cityRadius)return true;
@@ -3521,7 +3555,7 @@ function chooseTrafficTurn(h,atX,atZ){
     return best;
 }
 function spawnHighwayTraffic(count){
-    const segs=surfaceWorld.segments.filter(s=>s.len>260);
+    const segs=surfaceWorld.segments.filter(s=>!s.trafficDisabled&&s.len>260);
     if(!segs.length||!carTemplates.size)return;
     const colors=[...carTemplates.keys()];
     for(let i=0;i<count;i++){
@@ -4637,8 +4671,8 @@ function createRealismFramework(host){
     // -- Thermodynamic puff spawners -------------------------------------------
     function spawnSmoke(o){
         const i=smoke.alloc(), p=smoke.st[i];
-        p.alive=true; p.x=o.x;p.y=o.y;p.z=o.z; p.vx=o.vx||0;p.vy=o.vy||0;p.vz=o.vz||0;
-        p.r=o.r||4; p.maxR=o.maxR||p.r*6; p.vr=o.vr||6; p.age=0; p.life=o.life||14;
+        p.alive=true;p.x=o.x;p.y=o.y;p.z=o.z;p.vx=o.vx||0;p.vy=o.vy||0;p.vz=o.vz||0;
+        p.r=o.r||4;p.maxR=o.maxR||p.r*6;p.vr=o.vr||6;p.age=-(o.delay||0);p.life=o.life||14;p.cloud=o.cloud||null;
         p.alpha=o.alpha==null?.8:o.alpha; p.hot=o.hot==null?.5:o.hot; p.buoy=o.buoy==null?1:o.buoy;
         p.axis=o.axis?{x:o.axis.x,z:o.axis.z,pull:o.axisPull==null?.25:o.axisPull}:null;p.coolStart=o.coolStart==null?.7:o.coolStart;p.groundLock=!!o.groundLock;p.groundOffset=o.groundOffset==null?Math.max(.35,p.y-host.getTerrainHeight(p.x,p.z)):o.groundOffset;
         p.col0=new T.Color(o.hotColor||0x241d18); p.col1=new T.Color(o.col||0x6c6a6d); p.seed=Math.random()*40;
@@ -4673,8 +4707,22 @@ function createRealismFramework(host){
     }
     function updatePools(dt, windX, windZ){
         // smoke — buoyant expansion, Taylor entrainment, axial pull into the stem
-        for(let i=0;i<CAP_SMOKE;i++){ const p=smoke.st[i]; if(!p.alive) continue; p.age+=dt;
-            if(p.age>=p.life){ p.alive=false; smoke.mesh.setMatrixAt(i,HIDDEN); smoke.alp.setX(i,0); continue; }
+        for(let i=0;i<CAP_SMOKE;i++){ const p=smoke.st[i]; if(!p.alive) continue;p.age+=dt;
+            if(p.age<0){smoke.mesh.setMatrixAt(i,HIDDEN);smoke.alp.setX(i,0);continue;}
+            if(p.age>=p.life){p.alive=false;smoke.mesh.setMatrixAt(i,HIDDEN);smoke.alp.setX(i,0);continue;}
+            if(p.cloud){
+                // Blast-cloud puffs never integrate a free upward velocity. Their shared form grows as one
+                // coherent volume, preventing isolated, floating smoke balls and synchronising dissipation.
+                const c=p.cloud,g=T.MathUtils.smoothstep(p.age,0,c.build),capG=T.MathUtils.smoothstep(p.age,c.build*.22,c.build),drift=Math.min(p.age,c.life)*c.drift;
+                let rr=0,yy=0;
+                if(c.part==='stem'){rr=c.stem*(.34+.84*c.u)*g;yy=c.height*g*(.04+.76*c.u);}
+                else if(c.part==='cap'){rr=c.capR*c.u*capG;yy=c.height*g*(.73+.14*c.v)+(1-c.u*c.u)*c.height*.17*capG;}
+                else {rr=c.baseR*c.u*g;yy=c.height*g*(.03+.15*c.v);}
+                const wobble=Math.sin(c.phase+p.age*(.7+c.u))*c.puff*.09*g;
+                p.x=c.x+Math.cos(c.angle)*(rr+wobble)+windX*drift;p.z=c.z+Math.sin(c.angle)*(rr+wobble)+windZ*drift;p.y=c.y+yy;
+                p.r=c.puff*(.45+.55*g)*(c.part==='cap'?1.16:1);const appear=T.MathUtils.smoothstep(p.age,0,.14),fadeStart=c.life*.78,fade=p.age>fadeStart?1-T.MathUtils.smoothstep(p.age,fadeStart,c.life):1;
+                smoke.alp.setX(i,p.alpha*appear*fade);const cool=T.MathUtils.smoothstep(p.age,p.coolStart,p.coolStart+.45),col=_tmpC.copy(p.col0).lerp(p.col1,cool);smoke.col.setXYZ(i,col.r,col.g,col.b);setPuffMatrix(smoke,i,p,p.r);continue;
+            }
             const heat=Math.max(0,1-p.age/(p.life*0.62));
             p.vy+=(2.2+p.buoy*8.5)*heat*dt;
             const entrain=p.vr*1.5*(1-Math.exp(-p.age*2.3))+1.8;
@@ -4723,161 +4771,50 @@ function createRealismFramework(host){
         gate(smoke);gate(fire);gate(fballs);gate(walls);
     }
 
-    // -- Detonation event = the thermodynamic lifecycle of one blast -----------
-    function detonate(pos, cfg, blastType){
-        const R = Math.max(4, cfg.radius||30);
-        const nuke = blastType==='nuke', moab = blastType==='moab';
-        const napalm = blastType==='napalm';
-        const big = nuke||moab||R>=95;
-        const sc = nuke?2.6:moab?1.7:R>=220?1.25:R>=95?.85:.5; // visual scale band
-        const gy = host.getTerrainHeight(pos.x,pos.z);
-        const fogDur = nuke?95:moab?70:big?38:0;
-        const ev = { x:pos.x,y:Math.max(gy,pos.y||gy),z:pos.z, R, age:0, sc, big, nuke, moab, napalm,
-            columnDur: nuke?15:moab?9:big?6:2.8, life: Math.max(nuke?22:moab?17:big?12:6, fogDur),
-            stemAcc:0, frontTimer:0, fogTimer:0, cap2:false, fball:null, gy, fogDur };
-        events.push(ev);
+    // -- Detonation event = a shared, coherent explosion-cloud lifecycle ------
+    function spawnExplosionCloud(ev){
+        const cloudLife=ev.nuke?34:ev.moab?27:ev.big?20:13,build=ev.nuke?7.4:ev.moab?5.4:ev.big?3.8:2.7;
+        const cloud={x:ev.x,y:ev.gy,z:ev.z,life:cloudLife,build,drift:ev.nuke?.07:ev.moab?.09:.12,
+            height:ev.R*(ev.nuke?3.65:ev.moab?2.65:ev.big?.86:.42),capR:ev.R*(ev.nuke?1.32:ev.moab?1.12:ev.big?.55:.34),
+            stem:ev.R*(ev.nuke?.12:ev.moab?.14:ev.big?.11:.09),baseR:ev.R*(ev.nuke?.52:ev.moab?.48:ev.big?.34:.24),puff:ev.R*(ev.nuke?.055:ev.moab?.062:ev.big?.052:.046)+2};
+        // Stem + cap + ground skirt stay registered to this one clock. At low altitude ordinary blasts
+        // form a tall expanding cloud; nuclear/MOAB blasts form a proportionally taller mushroom cloud.
+        const count=Math.round((ev.nuke?300:ev.moab?210:ev.big?112:52)*tierMul);
+        for(let i=0;i<count;i++){
+            const q=i/count,part=q<.37?'stem':q<.84?'cap':'base',u=part==='stem'?Math.pow(Math.random(),.72):Math.sqrt(Math.random());
+            const c={...cloud,part,u,v:Math.random()*2-1,angle:Math.random()*Math.PI*2,phase:Math.random()*6.283};
+            spawnSmoke({x:ev.x,y:ev.gy,z:ev.z,r:c.puff,maxR:c.puff*1.3,vr:0,life:cloudLife,delay:.66,alpha:ev.nuke?.91:ev.moab?.88:.82,
+                hot:0,buoy:0,coolStart:0,hotColor:ev.nuke?0x393630:ev.moab?0x453629:0x3d3934,col:ev.nuke?0x252627:ev.moab?0x2b2928:0x292a2b,cloud:c});
+        }
+        ev.cloudEnd=.66+cloudLife;
+    }
+    function detonate(pos,cfg,blastType){
+        const R=Math.max(4,cfg.radius||30),nuke=blastType==='nuke',moab=blastType==='moab',napalm=blastType==='napalm',big=nuke||moab||R>=95;
+        const sc=nuke?2.6:moab?1.7:R>=220?1.25:R>=95?.85:.5,gy=host.getTerrainHeight(pos.x,pos.z),fogDur=nuke?95:moab?70:big?38:0;
+        const ev={x:pos.x,y:Math.max(gy,pos.y||gy),z:pos.z,R,age:0,sc,big,nuke,moab,napalm,life:Math.max(fogDur,nuke?35:moab?28:big?21:14),frontTimer:0,fogTimer:0,gy,fogDur};events.push(ev);
         impulseDebris(pos.x,pos.y||gy,pos.z,R*1.1,R*.28);
-        // Blinding initial flash: white screen that fades with the fireball age.
         const glareRange=nuke?14000:moab?8500:big?4200:1500,glare=Math.pow(T.MathUtils.clamp(1-Math.hypot(camera.position.x-pos.x,camera.position.y-gy,camera.position.z-pos.z)/glareRange,0,1),.55);
-        flashLevel = Math.max(flashLevel,(nuke?1:moab?.92:big?.62:R>=40?.32:.14)*glare);
-        // Brilliant flare with actual light rays and glare (nukes blue-white, MOAB amber).
-        if(nuke) spawnFlare({x:pos.x,y:gy+R*.22,z:pos.z,s0:R*.3,s1:R*4.2,life:2.8,color:0xdceaff});
-        else if(moab) spawnFlare({x:pos.x,y:gy+R*.2,z:pos.z,s0:R*.25,s1:R*2.6,life:2.0,color:0xffd2a0});
-        else if(big) spawnFlare({x:pos.x,y:gy+R*.18,z:pos.z,s0:R*.18,s1:R*1.3,life:1.15,color:0xffe9c8});
-        // Brief white-hot flash bubble.
-        spawnFireball({ x:pos.x,y:gy+R*.12,z:pos.z, r0:R*.04,rMax:R*(nuke?.55:big?.4:.3),grow:.22,life:nuke?.6:.4,color:0xff6622, groundY:gy, grounded:true, contact:.9 });
-        if(big){
-            // Massive incendiary fireball that REMAINS IN CONTACT WITH THE GROUND
-            // while it grows, then lifts into the stem as it cools.
-            ev.fball = spawnFireball({ x:pos.x,y:gy+R*.1,z:pos.z, r0:R*.08, rMax:R*(nuke?.5:moab?.42:.26),
-                grow:nuke?1.0:.75,life:nuke?4.6:moab?3.6:2.4,color:nuke?0xff7422:moab?0xf04a16:0xd62d12,
-                vy:R*(nuke?.11:moab?.07:.06), groundY:gy, grounded:true, contact:nuke?.62:moab?.55:.4 });
-            if(nuke){ // secondary hot lobe climbing just above the main fireball
-                spawnFireball({ x:pos.x,y:gy+R*.34,z:pos.z, r0:R*.06, rMax:R*.3, grow:.85, life:2.6, delay:.8, color:0xffc878, vy:R*.16, groundY:gy, grounded:false });
-            }
-        }
-        // ── 30-ft ground blast wave (scaled for smaller warheads) ──
-        const wallH=nuke?11.5:moab?10.5:Math.max(3.4,R*.075);
-        const wallCount = nuke?3:moab?2:big?2:1;
-        for(let w=0;w<wallCount;w++){
-            spawnWall({ x:pos.x,z:pos.z,groundY:gy+.2, r0:R*.06, r1:R*(1.55+w*.45),
-                height:wallH*(1-w*.14),k:nuke?1.28:2.05,life:2.15+w*.42,alpha:.82-w*.14,delay:w*(nuke?.42:.26) });
-        }
-        // Initial incendiary core: fire puffs expand OUTWARD from centre (not
-        // randomly painted): concentric shells give a true incendiary fireball.
-        // Fire puffs chain into soot smoke as they expire, feeding the plume.
-        const fireShells = big?4:3, fireN = Math.round((big?44:20)*tierMul*(.7+sc));
-        for(let sh=0; sh<fireShells; sh++){
-            const rr=R*(.08+sh*.15), n=Math.max(6,Math.round(fireN/(sh*.75+1)));
-            for(let i=0;i<n;i++){ const a=i/n*Math.PI*2+sh*.7, rr2=rr*(.75+Math.random()*.5);
-                spawnFire({ x:pos.x+Math.cos(a)*rr2, y:gy+R*.08+Math.random()*R*.16, z:pos.z+Math.sin(a)*rr2,
-                    vx:Math.cos(a)*R*(.32+sh*.55), vz:Math.sin(a)*R*(.32+sh*.55), vy:R*.24+Math.random()*R*.16,
-                    r:R*(.032+Math.random()*.034)*sc+1.4, maxR:R*.19*sc+8, vr:R*.62, life:.8+Math.random()*1.0,
-                    color:[0xff7624,0xe33112,0xff5318,0x98120c][sh%4],chain:true }); }
-        }
-        // Dense ground-dust + soot shell hugging the terrain, kicked out fast.
-        const dustN = Math.round((nuke?175:big?96:42)*tierMul);
-        for(let i=0;i<dustN;i++){ const a=Math.random()*6.283, rr=Math.random()*R*.55;
-            const groundBound=i%3!==0;spawnSmoke({x:pos.x+Math.cos(a)*rr,y:gy+1.5+Math.random()*4,z:pos.z+Math.sin(a)*rr,
-                vx:Math.cos(a)*R*(.4+Math.random()*.55),vz:Math.sin(a)*R*(.4+Math.random()*.55),vy:groundBound?.18+Math.random()*.35:3+Math.random()*7,
-                r:R*.036*sc+1.8,maxR:R*(.30+Math.random()*.16),vr:R*.34,life:(nuke?24:big?17:10)*(.7+Math.random()*.6),
-                alpha:.62+Math.random()*.3,hot:.65,buoy:groundBound?.02:.75,groundLock:groundBound,groundOffset:1.2+Math.random()*3,coolStart:.7,hotColor:0xc84216,col:0x262728}); }
-        // Low dirt/smoke ground fog that races outward across the blast radius.
-        if(big){
-            const fogN=Math.round((nuke?70:moab?52:28)*tierMul);
-            for(let i=0;i<fogN;i++){ const a=i/fogN*Math.PI*2+Math.random()*.2, band=.1+Math.random()*.5;
-                const spd=R*(nuke?1.05:moab?.95:.75)*(1.4-band);
-                spawnGroundFog({ x:pos.x+Math.cos(a)*R*.08, y:gy+4, z:pos.z+Math.sin(a)*R*.08,
-                    vx:Math.cos(a)*spd, vz:Math.sin(a)*spd,
-                    r:R*(nuke?.07:moab?.06:.05)+Math.random()*6, maxR:R*(nuke?.3:moab?.28:.2)+12,
-                    vr:R*(nuke?.05:.04), life:(nuke?75:moab?60:32)+Math.random()*18, ys:.2+Math.random()*.1,
-                    alpha:.78+Math.random()*.16, hotColor:nuke?0x2c2925:0x33271c, col:nuke?0x6a6660:0x6f5d48 }); }
-        }
-        // Immediate dense smoke shell around the core.
-        const smokeN = Math.round((nuke?165:big?96:40)*tierMul);
-        for(let i=0;i<smokeN;i++){ const a=Math.random()*6.283, rr=Math.pow(Math.random(),1.4)*R*.5;
-            const up=Math.random();
-            const groundBound=i%4===0;spawnSmoke({x:pos.x+Math.cos(a)*rr,y:gy+up*R*.4+2,z:pos.z+Math.sin(a)*rr,
-                vx:Math.cos(a)*R*.16,vz:Math.sin(a)*R*.16,vy:groundBound?.15:R*.1+Math.random()*R*.12,
-                r:R*.034*sc+1.5,maxR:R*(nuke?.46:moab?.40:.32)+3,vr:R*.24,
-                life:(nuke?32:moab?26:big?19:12)*(.65+Math.random()*.7),alpha:nuke?.9:.86,
-                hot:.95,buoy:groundBound?.02:1.25,groundLock:groundBound,groundOffset:1.2+Math.random()*3,axis:groundBound?null:(big?{x:pos.x,z:pos.z}:null),axisPull:.14,coolStart:.7,
-                hotColor:big?0xe24b18:0xd84a1d,col:nuke?0x292a2b:0x242526}); }
-        // Ground fracture: stone/dirt chunks thrown by the overpressure.
-        const groundChunks = Math.round((nuke?180:moab?120:big?60:R>=30?22:8)*tierMul);
-        fracture(pos, pos, groundChunks, ['stone','dirt'], Math.min(52,R*.16), R>200?2.2:1.2);
-        // Napalm leaves persistent fires that keep feeding smoke plumes.
-        const thermo = blastType==='thermobaric';
-        if(napalm||thermo){ const fn=napalm?40:24, fr=napalm?1.05:1.25; for(let i=0;i<Math.round(fn*tierMul);i++){ const a=Math.random()*6.283,rr=Math.random()*R*fr,x=pos.x+Math.cos(a)*rr,z=pos.z+Math.sin(a)*rr;
-            spawnFire({x,y:host.getTerrainHeight(x,z)+.6,z,r:1.2+Math.random()*1.8,maxR:7,vr:.8,life:3+Math.random()*4,vy:2.2,chain:true}); } }
+        flashLevel=Math.max(flashLevel,(nuke?1:moab?.92:big?.62:R>=40?.32:.14)*glare);
+        if(nuke)spawnFlare({x:pos.x,y:gy+R*.22,z:pos.z,s0:R*.3,s1:R*4.2,life:2.8,color:0xdceaff});else if(moab)spawnFlare({x:pos.x,y:gy+R*.2,z:pos.z,s0:R*.25,s1:R*2.6,life:2,color:0xffd2a0});else if(big)spawnFlare({x:pos.x,y:gy+R*.18,z:pos.z,s0:R*.18,s1:R*1.3,life:1.15,color:0xffe9c8});
+        // The orange/red thermal core is brief and ground-bound; it hands off to one growing cloud at .66 s.
+        spawnFireball({x:pos.x,y:gy+R*.12,z:pos.z,r0:R*.04,rMax:R*(nuke?.55:big?.4:.3),grow:.22,life:.66,color:0xff6622,groundY:gy,grounded:true,contact:1});
+        if(big)spawnFireball({x:pos.x,y:gy+R*.1,z:pos.z,r0:R*.08,rMax:R*(nuke?.5:moab?.42:.26),grow:nuke?1:.75,life:.72,color:nuke?0xff7422:moab?0xf04a16:0xd62d12,vy:0,groundY:gy,grounded:true,contact:1});
+        const wallH=nuke?11.5:moab?10.5:Math.max(3.4,R*.075),wallCount=nuke?3:moab?2:big?2:1;
+        for(let w=0;w<wallCount;w++)spawnWall({x:pos.x,z:pos.z,groundY:gy+.2,r0:R*.06,r1:R*(1.55+w*.45),height:wallH*(1-w*.14),k:nuke?1.28:2.05,life:2.15+w*.42,alpha:.82-w*.14,delay:w*(nuke?.42:.26)});
+        const fireShells=big?4:3,fireN=Math.round((big?44:20)*tierMul*(.7+sc));
+        for(let sh=0;sh<fireShells;sh++){const rr=R*(.08+sh*.15),n=Math.max(6,Math.round(fireN/(sh*.75+1)));for(let i=0;i<n;i++){const a=i/n*Math.PI*2+sh*.7,rr2=rr*(.75+Math.random()*.5);spawnFire({x:pos.x+Math.cos(a)*rr2,y:gy+R*.08+Math.random()*R*.16,z:pos.z+Math.sin(a)*rr2,vx:Math.cos(a)*R*(.32+sh*.55),vz:Math.sin(a)*R*(.32+sh*.55),vy:R*.24+Math.random()*R*.16,r:R*(.032+Math.random()*.034)*sc+1.4,maxR:R*.19*sc+8,vr:R*.62,life:.52+Math.random()*.14,color:[0xff7624,0xe33112,0xff5318,0x98120c][sh%4],chain:false});}}
+        spawnExplosionCloud(ev);
+        if(big){const fogN=Math.round((nuke?70:moab?52:28)*tierMul);for(let i=0;i<fogN;i++){const a=i/fogN*Math.PI*2+Math.random()*.2,band=.1+Math.random()*.5,spd=R*(nuke?1.05:moab?.95:.75)*(1.4-band);spawnGroundFog({x:pos.x+Math.cos(a)*R*.08,y:gy+4,z:pos.z+Math.sin(a)*R*.08,vx:Math.cos(a)*spd,vz:Math.sin(a)*spd,r:R*(nuke?.07:moab?.06:.05)+Math.random()*6,maxR:R*(nuke?.3:moab?.28:.2)+12,vr:R*(nuke?.05:.04),life:(nuke?75:moab?60:32)+Math.random()*18,ys:.2+Math.random()*.1,alpha:.78+Math.random()*.16,hotColor:nuke?0x2c2925:0x33271c,col:nuke?0x6a6660:0x6f5d48});}}
+        const groundChunks=Math.round((nuke?180:moab?120:big?60:R>=30?22:8)*tierMul);fracture(pos,pos,groundChunks,['stone','dirt'],Math.min(52,R*.16),R>200?2.2:1.2);
+        const thermo=blastType==='thermobaric';if(napalm||thermo){const fn=napalm?40:24,fr=napalm?1.05:1.25;for(let i=0;i<Math.round(fn*tierMul);i++){const a=Math.random()*6.283,rr=Math.random()*R*fr,x=pos.x+Math.cos(a)*rr,z=pos.z+Math.sin(a)*rr;spawnFire({x,y:host.getTerrainHeight(x,z)+.6,z,r:1.2+Math.random()*1.8,maxR:7,vr:.8,life:3+Math.random()*4,vy:2.2,chain:true});}}
         return ev;
     }
-    function eventMushroomCap(ev,altTop){ // when the fireball dies, leave an opaque cooling cap
-        const n=Math.round((ev.nuke?altTop?96:80:ev.moab?56:ev.big?32:14)*tierMul);
-        const top=altTop!==undefined?altTop:ev.gy+ev.R*(ev.nuke?.92:ev.moab?.55:.38);
-        const spread=ev.nuke?altTop?.62:.46:ev.moab?.4:.26;
-        const maxR=ev.nuke?altTop?1.05:.8:ev.moab?.55:.58;
-        const hot=ev.nuke?0x14110f:ev.moab?0x241b12:0x2b2622;
-        const cold=ev.nuke?0x454342:ev.moab?0x59483b:0x66635f;
-        for(let i=0;i<n;i++){ const a=Math.random()*6.283, rr=Math.sqrt(Math.random())*ev.R*spread;
-            spawnSmoke({ x:ev.x+Math.cos(a)*rr, y:top+(Math.random()-.5)*ev.R*(altTop?.14:.08), z:ev.z+Math.sin(a)*rr,
-                vx:Math.cos(a)*ev.R*.06, vz:Math.sin(a)*ev.R*.06, vy:ev.R*(altTop?.02:.08),
-                r:ev.R*(altTop?.09:.07)+3, maxR:ev.R*maxR, vr:ev.R*.13, life:ev.nuke?70:ev.moab?46:28,
-                alpha:.92, hot:.5, buoy:altTop?.35:.7, axis:{x:ev.x,z:ev.z}, axisPull:.05, hotColor:hot, col:cold }); }
-    }
-    function updateEvents(dt, windX, windZ){
-        for(let e=events.length-1;e>=0;e--){ const ev=events[e]; ev.age+=dt;
-            // Fireball death → mushroom cap transition.
-            if(ev.fball && !ev.fball.alive){ eventMushroomCap(ev); ev.fball=null; }
-            if(ev.age<ev.columnDur){
-                // Rising thermal column: puffs born along the stem as it climbs.
-                // Nukes build a very tall, diffuse grey-black column; MOABs a shorter brown one.
-                const rise = ev.R*(ev.nuke?.3:ev.moab?.22:ev.big?.14:.16);
-                const maxH = ev.R*(ev.nuke?2.7:ev.moab?1.25:ev.big?.5:4.4);
-                const stemH = Math.min(maxH, ev.age*rise);
-                const rate=(ev.nuke?62:ev.moab?44:ev.big?28:14)*tierMul; ev.stemAcc+=dt*rate;
-                while(ev.stemAcc>1){ ev.stemAcc-=1;
-                    const f=Math.random(); const yy=Math.pow(f,1.18)*stemH;
-                    const stemR=(4+yy*(ev.nuke?.09:.06))*(ev.sc+.5);
-                    const a=Math.random()*6.283, rr=Math.pow(Math.random(),.7)*stemR;
-                    const swirl=(Math.random()-.5)*ev.R*.05;
-                    spawnSmoke({ x:ev.x+Math.cos(a)*rr, y:ev.gy+yy, z:ev.z+Math.sin(a)*rr,
-                        vx:Math.cos(a)*swirl+(Math.random()-.5)*ev.R*.03, vz:Math.sin(a)*swirl+(Math.random()-.5)*ev.R*.03, vy:rise*.55+Math.random()*7,
-                        r:stemR*(.8+Math.random()*.6), maxR:stemR*(ev.nuke?10:7.5)+ev.R*.16, vr:6+ev.R*.045,
-                        life:(ev.nuke?52:ev.moab?38:ev.big?22:12)*(.7+Math.random()*.7), alpha:ev.nuke?.82:ev.moab?.85:.84,
-                        hot:1-f*.6, buoy:1.5-f*.4, axis:{x:ev.x,z:ev.z}, axisPull:.34*(1-f)+.08,
-                        hotColor:ev.nuke?0x151210:ev.moab?0x20190f:0x171310, col:ev.nuke?0x4a4848:ev.moab?0x5b4a3a:0x595450 });
-                    if(ev.age<(ev.nuke?2.2:1.1) && Math.random()<(ev.nuke?.62:.5)) spawnFire({x:ev.x+Math.cos(a)*rr*1.4,y:ev.gy+yy*.4,z:ev.z+Math.sin(a)*rr*1.4,
-                        r:2.5+Math.random()*2.5,maxR:ev.sc*10,vr:4,life:.9+Math.random()*.7,vy:9,color:0xff8030,chain:true});
-                }
-                // At top-out the nuke grows a second, broader high-altitude cap.
-                if(ev.nuke&&!ev.cap2&&stemH>=maxH*.96){ ev.cap2=true; eventMushroomCap(ev,ev.gy+maxH); }
-                // Dust kicked up by the advancing shock front.
-                ev.frontTimer-=dt;
-                if(ev.frontTimer<=0 && ev.age<(ev.big?3.2:1.4)){ ev.frontTimer=ev.big?.16:.22;
-                    const frontR=Math.min(ev.R*1.5, ev.R*.1+ev.age*ev.R*.95);
-                    const n=Math.round((ev.big?16:8)*tierMul);
-                    for(let i=0;i<n;i++){ const a=Math.random()*6.283, rr=frontR*(.9+Math.random()*.2);
-                        spawnSmoke({x:ev.x+Math.cos(a)*rr,y:ev.gy+1.5,z:ev.z+Math.sin(a)*rr,
-                            vx:Math.cos(a)*ev.R*.55, vz:Math.sin(a)*ev.R*.55, vy:2.5+Math.random()*4,
-                            r:3.5+Math.random()*3.5,maxR:ev.R*.2+10,vr:ev.R*.28,life:8+Math.random()*6,alpha:.6,hot:0,buoy:.35,hotColor:0x4b4236,col:0x978c7c}); }
-                }
-                // The racing low ground-fog front (only for large warheads).
-                if(ev.fogDur){ ev.fogTimer-=dt;
-                    const raceDur=ev.nuke?13:ev.moab?10:6;
-                    if(ev.fogTimer<=0 && ev.age<raceDur){ ev.fogTimer=.16;
-                        const front=ev.R*(1-Math.exp(-ev.age*(ev.nuke?.3:ev.moab?.36:.5)))*1.02;
-                        const n=Math.round((ev.nuke?26:ev.moab?22:12)*tierMul);
-                        for(let i=0;i<n;i++){ const a=i/n*Math.PI*2+Math.random()*.3;
-                            spawnGroundFog({ x:ev.x+Math.cos(a)*front, y:ev.gy+4, z:ev.z+Math.sin(a)*front,
-                                vx:Math.cos(a)*ev.R*(ev.nuke?.5:ev.moab?.55:.45), vz:Math.sin(a)*ev.R*(ev.nuke?.5:ev.moab?.55:.45),
-                                r:ev.R*(ev.nuke?.06:ev.moab?.055:.045)+Math.random()*5, maxR:ev.R*(ev.nuke?.26:ev.moab?.24:.18)+10,
-                                vr:ev.R*.03, life:(ev.nuke?80:ev.moab?62:30)+Math.random()*20, ys:.16+Math.random()*.08,
-                                alpha:.8, hotColor:ev.nuke?0x262320:0x2f251a, col:ev.nuke?0x665f58:0x6c5a45 }); }
-                    }
-                }
-            }
-            if(ev.age>ev.life && !ev.fball) events.splice(e,1);
+    function updateEvents(dt,windX,windZ){
+        for(let e=events.length-1;e>=0;e--){const ev=events[e];ev.age+=dt;
+            // The only secondary blast dust is terrain-locked. It cannot turn into detached rising puffs.
+            ev.frontTimer-=dt;if(ev.frontTimer<=0&&ev.age<(ev.big?2.7:1.2)){ev.frontTimer=ev.big?.16:.22;const frontR=Math.min(ev.R*1.5,ev.R*.1+ev.age*ev.R*.95),n=Math.round((ev.big?16:8)*tierMul);for(let i=0;i<n;i++){const a=Math.random()*6.283,rr=frontR*(.9+Math.random()*.2);spawnSmoke({x:ev.x+Math.cos(a)*rr,y:ev.gy+1.2,z:ev.z+Math.sin(a)*rr,vx:Math.cos(a)*ev.R*.55,vz:Math.sin(a)*ev.R*.55,vy:0,r:3.5+Math.random()*3.5,maxR:ev.R*.2+10,vr:ev.R*.28,life:5.5,alpha:.52,hot:0,buoy:0,groundLock:true,groundOffset:1.1,hotColor:0x4b4236,col:0x706b63});}}
+            if(ev.fogDur){ev.fogTimer-=dt;const raceDur=ev.nuke?13:ev.moab?10:6;if(ev.fogTimer<=0&&ev.age<raceDur){ev.fogTimer=.16;const front=ev.R*(1-Math.exp(-ev.age*(ev.nuke?.3:ev.moab?.36:.5)))*1.02,n=Math.round((ev.nuke?26:ev.moab?22:12)*tierMul);for(let i=0;i<n;i++){const a=i/n*Math.PI*2+Math.random()*.3;spawnGroundFog({x:ev.x+Math.cos(a)*front,y:ev.gy+4,z:ev.z+Math.sin(a)*front,vx:Math.cos(a)*ev.R*(ev.nuke?.5:ev.moab?.55:.45),vz:Math.sin(a)*ev.R*(ev.nuke?.5:ev.moab?.55:.45),r:ev.R*(ev.nuke?.06:ev.moab?.055:.045)+Math.random()*5,maxR:ev.R*(ev.nuke?.26:ev.moab?.24:.18)+10,vr:ev.R*.03,life:(ev.nuke?80:ev.moab?62:30)+Math.random()*20,ys:.16+Math.random()*.08,alpha:.8,hotColor:ev.nuke?0x262320:0x2f251a,col:ev.nuke?0x665f58:0x6c5a45});}}}
+            if(ev.age>ev.life)events.splice(e,1);
         }
     }
     // 1 inside the dust disk = visibility should be choked to a few hundred metres.
@@ -5644,6 +5581,8 @@ function drawFullMap(){
     for(const city of CITY_RECORDS){ctx.fillStyle='rgba(82,88,92,.48)';ctx.beginPath();ctx.arc(city.x,city.z,city.radius,0,Math.PI*2);ctx.fill();ctx.strokeStyle='rgba(210,214,210,.22)';ctx.lineWidth=12;ctx.stroke();ctx.fillStyle='rgba(235,238,232,.72)';ctx.font='bold 92px monospace';ctx.textAlign='center';ctx.fillText(city.name.replace(' City',''),city.x,city.z-city.radius-120);}
     for(const t of TOWN_CENTERS){ctx.fillStyle='rgba(150,135,105,.82)';drawOrganicCircle(ctx,t.x,t.z,t.organicR||150,t.seed||1,5);ctx.fill();ctx.strokeStyle='rgba(110,96,66,.5)';ctx.lineWidth=Math.max(1,3/z);ctx.stroke();}
     ctx.strokeStyle='rgba(220,220,215,.92)';ctx.lineWidth=CFG.highwayWidth*.58;for(const path of HIGHWAY_PATHS){ctx.beginPath();ctx.moveTo(path[0].x,path[0].z);for(let i=1;i<path.length;i++)ctx.lineTo(path[i].x,path[i].z);ctx.stroke();}
+    // Connected regional/town/farm links are intentionally visible on the strategic map.
+    ctx.strokeStyle='rgba(205,198,164,.72)';ctx.lineWidth=18;for(const path of REGIONAL_ROAD_PATHS){ctx.beginPath();ctx.moveTo(path[0].x,path[0].z);for(let i=1;i<path.length;i++)ctx.lineTo(path[i].x,path[i].z);ctx.stroke();}
     for(const f of forestClusters){
         ctx.fillStyle='rgba(44,104,52,0.62)';
         drawForestClusterShape(ctx,f);
@@ -6311,7 +6250,7 @@ async function init(){
 const _npcPos = new THREE.Vector3();
 function updateForestLOD(playerPos){
     if(!treeInstances)return;
-    const stamp=HIGHWAY_PATHS.length+':'+HIGHWAY_EXITS.length;
+    const stamp=surfaceWorld.revision;
     if(forestRoadStamp!==stamp){for(const t of forestTrees)if(!t.userData.dead&&!naturePointIsClear(t.position.x,t.position.z,3)){t.userData.dead=true;t.userData.natureBlocked=true;setTreeInstanceVisible(t,false);}forestRoadStamp=stamp;}
     if(forestLastPosition.distanceToSquared(playerPos)<6400&&forestRenderDistance===CFG.renderDistance)return;
     forestLastPosition.copy(playerPos);forestRenderDistance=CFG.renderDistance;
