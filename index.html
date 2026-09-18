@@ -272,7 +272,7 @@ body{overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:#1a2
 <div class="settings-group"><label>Subtitles</label><input type="checkbox" id="subtitles-toggle" checked></div>
 <div class="settings-group"><label>Difficulty</label><select id="diff-select"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select></div>
 <div class="settings-group"><label>Speed</label><input type="range" id="speed-slider" min="200" max="700" value="420"><span id="speed-val">420</span></div>
-<div class="settings-group"><label>NPCs</label><input type="range" id="enemy-slider" min="30" max="900" value="320"><span id="enemy-val">320</span></div>
+<div class="settings-group"><label>NPCs</label><input type="range" id="enemy-slider" min="30" max="5000" value="3200"><span id="enemy-val">3200</span></div>
 <div style="margin-top:14px;"><button class="settings-btn primary" id="settings-apply">APPLY</button><button class="settings-btn" id="settings-benchmark">RUN BENCHMARK</button><button class="settings-btn" id="settings-close">CLOSE</button></div><div id="benchmark-readout"></div>
 </div>
 <div id="blocker">
@@ -356,7 +356,7 @@ const CITY_CENTERS=(()=>{
     for(let i=0;i<spots.length;i++){const [gx,gz]=spots[i];out.push({id:'c'+i,name:names[i]+' City',x:gx*spacing,z:gz*spacing});}
     return out;
 })();
-const TOWN_CENTERS=[],HIGHWAY_PATHS=[],HIGHWAY_EXITS=[],CITY_RECORDS=[];
+const TOWN_CENTERS=[],HIGHWAY_PATHS=[],HIGHWAY_EXITS=[],CITY_RECORDS=[],farmCenters=[];
 
 const WEAPONS = [
     { name:'Pistol',  damage:35,   reloadTime:0.35, auto:true,  color:0x60d8c0, ammo:9999, recoil:1.0, projectile:false },
@@ -464,7 +464,7 @@ function terrainHeightAt(x, z){
 }
 
 // Camera-centered clip rings: 16 inner tiles, then six 12-tile rings, 8-512m samples.
-const worldNature={tiles:[],active:new Map(),pending:null,signature:'',center:new THREE.Vector3(),time:{value:0},wetness:{value:0},night:{value:0},generationBudgetMs:2.5,maxRowsPerFrame:160,grassBudget:140,grass:null,clouds:[]};
+const worldNature={tiles:[],active:new Map(),pending:null,signature:'',center:new THREE.Vector3(),time:{value:0},wetness:{value:0},night:{value:0},treeSway:{value:0},generationBudgetMs:2.5,maxRowsPerFrame:160,grassBudget:140,grass:null,clouds:[]};
 function getNatureNoise(){
     if(worldNature.noise)return worldNature.noise;
     const n=128,data=new Uint8Array(n*n*4);
@@ -556,7 +556,11 @@ function connectTownRoads(){
 }
 function paintTerrainSurface(tile){
     const N=tile.canvas.width,ctx=tile.canvas.getContext('2d'),scale=N/tile.s,pad=tile.s/N*2;
-    ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,N,N);ctx.setTransform(scale,0,0,scale,-tile.x*scale,-tile.z*scale);
+    ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#5d784b';ctx.fillRect(0,0,N,N);
+    // Bake the same local procedural albedo into every road/lot canvas: never sample transparent black terrain.
+    if(groundBaseTex.image)ctx.drawImage(groundBaseTex.image,0,0,N,N);
+    for(let i=0;i<160;i++){const px=hash2((tile.x/tile.s|0)*193+i,(tile.z/tile.s|0)+41)*N,py=hash2((tile.z/tile.s|0)*271+i,(tile.x/tile.s|0)+73)*N;ctx.fillStyle=i%3?'rgba(112,136,76,.18)':'rgba(72,91,52,.15)';ctx.fillRect(px,py,1+hash2(i,17)*3,1+hash2(i,29)*2);}
+    ctx.setTransform(scale,0,0,scale,-tile.x*scale,-tile.z*scale);
     const patches=surfaceQuery(surfaceWorld.patchCells,tile.x-pad,tile.z-pad,tile.s+pad*2,tile.s+pad*2);
     const wet=typeof weather!=='undefined'?weather.wetness:0,colors={lawn:'#607342',concrete:'#96958a',asphalt:`rgb(${Math.round(59-19*wet)},${Math.round(62-17*wet)},${Math.round(61-14*wet)})`,dirt:'#887153'};
     for(const p of patches){ctx.save();ctx.translate(p.x,p.z);ctx.rotate(-p.rotation);ctx.fillStyle=colors[p.kind]||colors.dirt;ctx.fillRect(-p.w*.5,-p.d*.5,p.w,p.d);ctx.restore();}
@@ -582,7 +586,7 @@ function createWorldTerrain(){
             float path=min(abs(sin((vNatureWorld.x+110.*sin(vNatureWorld.z*.001)+55.*sin(vNatureWorld.z*.0023))*.001745169))*572.9578,abs(sin((vNatureWorld.z+170.*sin(vNatureWorld.x*.0008))*.001208305))*827.6057);
             diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.25,.175,.092),smoothstep(.45,.65,soil)*.7);
             diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.26,.185,.10),(1.-smoothstep(2.1,5.2,path))*vNatureRural);
-            vec4 road=texture2D(surfaceMap,vSurfaceUV);vec3 wetRoad=mix(road.rgb,vec3(.055,.075,.085),surfaceWetness*.74);diffuseColor.rgb=mix(diffuseColor.rgb,wetRoad,road.a);
+            vec4 road=texture2D(surfaceMap,vSurfaceUV);float surfaceMask=smoothstep(.01,.12,road.a);vec3 wetRoad=mix(road.rgb,vec3(.055,.075,.085),surfaceWetness*.74);diffuseColor.rgb=mix(diffuseColor.rgb,wetRoad,surfaceMask);
             diffuseColor.rgb*=mix(.86,1.15,grain);
             for(int k=0;k<8;k++){vec4 sc=scorches[k];float scar=(1.-smoothstep(sc.z*.25,max(.01,sc.z),distance(vNatureWorld.xz,sc.xy)))*sc.w;diffuseColor.rgb*=1.-scar*.78;}
             diffuseColor.a=1.;`);
@@ -597,7 +601,7 @@ function allocateNatureTile(){
     const mat=worldNature.material.clone();mat.userData.surfaceTexture=tex;mat.onBeforeCompile=worldNature.material.onBeforeCompile;mat.customProgramCacheKey=worldNature.material.customProgramCacheKey;
     const mesh=new THREE.Mesh(g,mat);mesh.name='Opaque terrain tile';mesh.visible=false;mesh.receiveShadow=true;mesh.matrixAutoUpdate=false;scene.add(mesh);const tile={mesh,canvas,surfaceTexture:tex,heights:new Float64Array(19*19),row:0};worldNature.tiles.push(tile);return tile;
 }
-function createFarm(x,z){createBarn(x,z);registerSurfacePatch(x,z+60,70,90,'dirt');createFenceSquare(x,z+60,90);}
+function createFarm(x,z){farmCenters.push({x,z});createBarn(x,z);registerSurfacePatch(x,z+60,70,90,'dirt');createFenceSquare(x,z+60,90);}
 function createHill(){/* Hills are part of the opaque heightfield, not intersecting sphere overlays. */}
 let scorchIndex=0;const terrainScorchLife=new Float32Array(8),terrainScorchMax=new Float32Array(8);
 function stampTerrainScorch(pos,radius,seconds){if(!worldNature.scorches)return;const i=scorchIndex++%8;worldNature.scorches.value[i].set(pos.x,pos.z,Math.min(radius*.72,1100),1);terrainScorchLife[i]=terrainScorchMax[i]=Math.min(90,Math.max(3,seconds));}
@@ -930,13 +934,17 @@ function applyClimateLighting(){
     sceneFill.intensity=THREE.MathUtils.lerp(.012,.42,day)*(0.45+.55*sunVisibility);
     fillLight.intensity=THREE.MathUtils.lerp(.018,.42,day)*(0.48+.52*sunVisibility);
     bounceLight.intensity=THREE.MathUtils.lerp(.012,.22,day)*(0.5+.5*sunVisibility);
-    const skyLight=THREE.MathUtils.lerp(.018,.70,day)*(0.40+.60*sunVisibility),storm=w.rain||0;
-    scene.background.setHSL(THREE.MathUtils.lerp(.62,.56,storm),THREE.MathUtils.lerp(.38,.18,storm),skyLight*.20);
-    skyMesh.material.color.setHSL(THREE.MathUtils.lerp(.62,.57,storm),THREE.MathUtils.lerp(.48,.28,storm),skyLight);
-    scene.fog.color.setHSL(THREE.MathUtils.lerp(.62,.56,storm),THREE.MathUtils.lerp(.26,.12,storm),Math.max(.025,skyLight*.82));
-    atmosphereSky.visible=night<.72&&storm<.18;
+    const skyLight=THREE.MathUtils.lerp(.018,.70,day)*(0.40+.60*sunVisibility),storm=w.rain||0,isRain=w.preset==='rain',isStorm=w.preset==='storm';
+    let skyHue=.62,skySat=.48,skyLevel=skyLight;
+    // Precipitation owns the palette: rain is a mid-grey overcast and storm is a muted grey-purple wall.
+    if(isRain){skyHue=.60;skySat=.075;skyLevel=THREE.MathUtils.lerp(.025,.48,day)*(.78+.22*sunVisibility);}
+    if(isStorm){skyHue=.72;skySat=.19;skyLevel=THREE.MathUtils.lerp(.022,.38,day)*(.72+.28*sunVisibility);}
+    scene.background.setHSL(skyHue,skySat*.55,skyLevel*.20);
+    skyMesh.material.color.setHSL(skyHue,skySat,skyLevel);
+    scene.fog.color.setHSL(skyHue,skySat*.52,Math.max(.025,skyLevel*.82));
+    atmosphereSky.visible=night<.72&&!isRain&&!isStorm;
     renderer.toneMappingExposure=THREE.MathUtils.lerp(.62,1.08,day)*(0.86+.14*sunVisibility);
-    sunDisc3D.visible=elev>.02&&sunVisibility>.30&&storm<.24;sunDisc3D.material.opacity=sunDisc3D.visible?Math.min(.98,sunVisibility*1.25):0;
+    sunDisc3D.visible=elev>.02&&sunVisibility>.30&&!isRain&&!isStorm;sunDisc3D.material.opacity=sunDisc3D.visible?Math.min(.98,sunVisibility*1.25):0;
     starMaterial.opacity=night*.9*(1-storm*.72)*(1-(w.cover||0)*.22);moonDisc3D.material.opacity=night*.92*(1-storm*.72);
     for(const entry of cityLightMaterials)entry.material.emissiveIntensity=entry.day+(entry.night-entry.day)*night;
 }
@@ -963,7 +971,7 @@ function createWeatherController(){
         for(const k of ['cover','rain','wetness','fog','wind','turbidity'])state[k]=THREE.MathUtils.lerp(state[k],p[k],blend);
         const now=performance.now()*.001,windX=Math.sin(now*.11)*state.wind,windZ=Math.cos(now*.073)*state.wind*.58;
         window.cityStrikeWind={x:windX,z:windZ};
-        worldNature.wetness.value=state.wetness;
+        worldNature.wetness.value=state.wetness;worldNature.treeSway.value=state.preset==='storm'?state.rain*.62:0;
         if(worldNature.cloudMaterial){const u=worldNature.cloudMaterial.uniforms;if(u.cloudCover)u.cloudCover.value=state.cover;if(u.stormAmount)u.stormAmount.value=state.rain;}
         if(worldNature.cloudSlices)for(const m of worldNature.cloudSlices)if(m.uniforms.cloudCover)m.uniforms.cloudCover.value=state.cover;
         const light=THREE.MathUtils.clamp(Math.sin((timeOfDay/24)*Math.PI*2-Math.PI/2)*.5+.5,0,1);
@@ -978,10 +986,10 @@ function createWeatherController(){
         state.sunVisibility=THREE.MathUtils.clamp(1-cloudBlock,.06,1);
         applyClimateLighting();
         if(Math.abs(state.wetness-state.lastWetPaint)>.085){state.lastWetPaint=state.wetness;repaintWetSurfaces();}
-        rain.visible=state.rain>.015;rain.material.opacity=state.rain*.48;updateWeatherAmbience(state.rain,state.wind);
+        rain.visible=state.rain>.015;rain.material.opacity=state.rain*.48;const activeDrops=Math.round(count*THREE.MathUtils.clamp(.18+state.rain*.82,0,1));rain.geometry.setDrawRange(0,activeDrops*2);updateWeatherAmbience(state.rain,state.wind);
         if(!rain.visible)return;
-        const radius=state.preset==='storm'?115:86;
-        for(let i=0;i<count;i++){
+        const radius=state.preset==='storm'?98:82;
+        for(let i=0;i<activeDrops;i++){
             const d=drops[i];if(!Number.isFinite(d.x)||Math.abs(d.x-cam.x)>radius||Math.abs(d.z-cam.z)>radius||d.y<terrainHeightAt(d.x,d.z)){
                 d.x=cam.x+(Math.random()-.5)*radius*2;d.z=cam.z+(Math.random()-.5)*radius*2;d.y=cam.y+16+Math.random()*55;
             }
@@ -1958,9 +1966,7 @@ function applyVehicleChase(v, dt){
     _tpDesired.set(0, up, behind);
     const k = 1-Math.exp(-7*dt);
     camera.position.lerp(_tpDesired, k);
-    _tpLook.set(0, t==='jet'?0.6:1.1, -3);
-    v.localToWorld(_tpLook);
-    camera.lookAt(_tpLook);
+    // Camera rotation belongs to PointerLockControls here, so the player can freely look around the chase view.
     const cockpit = v.userData.cockpit;
     if(cockpit) cockpit.visible = false;
 }
@@ -2294,11 +2300,11 @@ function createSuburbRow(cx,cz,q){
     const n=2; // paired homes let nearly every outer block receive a residential frontage
     const setback=26+Math.random()*8, spacing=25;
     if(alongX){const side=Math.sign(cz-roadZ)||1,fz=roadZ+side*setback;
-        for(let i=0;i<n;i++){const hx=cx+(i-(n-1)/2)*spacing;createSuburbHouse(hx,fz+(Math.random()-.5)*6,false);}}
+        for(let i=0;i<n;i++){const hx=cx+(i-(n-1)/2)*spacing;createSuburbHouse(hx,fz+(Math.random()-.5)*6,false,i===0);}}
     else{const side=Math.sign(cx-roadX)||1,fx=roadX+side*setback;
-        for(let i=0;i<n;i++){const hz=cz+(i-(n-1)/2)*spacing;createSuburbHouse(fx+(Math.random()-.5)*6,hz,false);}}
+        for(let i=0;i<n;i++){const hz=cz+(i-(n-1)/2)*spacing;createSuburbHouse(fx+(Math.random()-.5)*6,hz,false,i===0);}}
 }
-function createSuburbHouse(x,z,isSmallTown=false){
+function createSuburbHouse(x,z,isSmallTown=false,plantFrontTree=false){
     const w=12+Math.random()*5,d=11+Math.random()*5,h=7.5+Math.random()*3.5,rot=isSmallTown?Math.floor(Math.random()*4)*Math.PI*.5:_nearestStreetFacing(x,z);
     const rec=_newBuilding(x,z,w,d,h,'house',0xd2bea0,'house',{resistance:.25,rot});if(!rec)return null;_surface(x,z,w+9,d+9,'lawn',rot);
     _queuePart(rec,'body',x,rec.groundY+h*.5,z,w,h,d,rot,'house');_queuePart(rec,'accessory',x,rec.groundY+h,z,w*1.14,3.4,d*1.16,rot,'roof',BUILDING_GABLE_GEO);
@@ -2308,7 +2314,7 @@ function createSuburbHouse(x,z,isSmallTown=false){
     _surface(x+fx*(d*.5+driveLen*.5),z+fz*(d*.5+driveLen*.5),driveW,driveLen,'concrete',rot);
     // Place the shed wholly beyond the rear wall, leaving a larger usable backyard.
     _queuePart(rec,'accessory',x-fx*(d*.5+4.2),rec.groundY+1.1,z-fz*(d*.5+4.2),2.6,2.2,3.0,rot,'roof');_houseFence(rec,rot,driveW);
-    const side=Math.random()<.5?-1:1,tx=x+Math.cos(rot)*side*(w*.5+5.5)-fx*2,tz=z-Math.sin(rot)*side*(w*.5+5.5)-fz*2;if(!pointIsBlocked(tx,tz,3.6)&&roadClearAt(tx,tz,4.5))createStreetTree(tx,tz,.72+Math.random()*.38);return rec;
+    if(plantFrontTree){const side=Math.random()<.5?-1:1,tx=x+Math.cos(rot)*side*(w*.5+5.5)-fx*2,tz=z-Math.sin(rot)*side*(w*.5+5.5)-fz*2;if(!pointIsBlocked(tx,tz,3.6)&&roadClearAt(tx,tz,4.5))createStreetTree(tx,tz,.72+Math.random()*.38);}return rec;
 }
 function createCommercialBuilding(x,z,type='store'){
     const defs={apartment:[44+Math.random()*12,38+Math.random()*12,64+Math.random()*42,'apartment'],hotel:[54+Math.random()*16,42+Math.random()*16,74+Math.random()*48,'apartment'],store:[36+Math.random()*16,31+Math.random()*14,10+Math.random()*6,'shop'],gas:[30+Math.random()*8,24+Math.random()*7,7+Math.random()*3,'shop']};
@@ -2323,7 +2329,7 @@ function createLocalCity(city){
     CITY_RECORDS.push({id:city.id,name:city.name,x:city.x,z:city.z,radius:CFG.cityRadius});const previous=buildingRender.activeCityId;buildingRender.activeCityId=city.id;
     const bs=CFG.blockSize,r=CFG.roadZoneRadius,lots=[];for(let lx=-r;lx<r;lx+=bs)for(let lz=-r;lz<r;lz+=bs){const dist=Math.hypot(lx+bs*.5,lz+bs*.5);lots.push({lx,lz,dist,key:hash2(Math.round(lx),Math.round(lz))});}
     // Build the residential edge first so the suburban grid is never starved by central towers.
-    lots.sort((a,b)=>b.dist-a.dist||a.key-b.key);for(const {lx,lz,dist} of lots){const cx=city.x+lx+bs*.5,cz=city.z+lz+bs*.5;if(dist>CFG.cityRadius-bs*.22)continue;const hash=((Math.imul((lx/bs)|0,73856093)^Math.imul((lz/bs)|0,19349663)^Math.imul(city.x|0,83492791))>>>0)%100;const keep=dist>CFG.mixedUrbanRadius?93:43;if(hash>keep)continue;const q=(hash%37)/37;if(dist<CFG.downtownRadius){if(q<.16)createCommercialBuilding(cx,cz,'hotel');else if(q<.43)createCommercialBuilding(cx,cz,'apartment');else if(q<.55)createCommercialBuilding(cx,cz,'store');else createDowntownBuilding(cx,cz);}else if(dist<CFG.innerUrbanRadius){if(q<.22)createCommercialBuilding(cx,cz,'apartment');else if(q<.38)createCommercialBuilding(cx,cz,'store');else if(q<.45)createCommercialBuilding(cx,cz,'gas');else createMediumRise(cx,cz);}else if(dist<CFG.mixedUrbanRadius){if(q<.15)createCommercialBuilding(cx,cz,'store');else if(q<.21)createCommercialBuilding(cx,cz,'gas');else if(q<.70){createSuburbHouse(cx-bs*.19,cz-bs*.17);if(q>.38)createSuburbHouse(cx+bs*.19,cz+bs*.17);}else createMediumRise(cx,cz);}else if(q<.07)createCommercialBuilding(cx,cz,q<.03?'gas':'store');else createSuburbRow(cx,cz,q);}
+    lots.sort((a,b)=>b.dist-a.dist||a.key-b.key);for(const {lx,lz,dist} of lots){const cx=city.x+lx+bs*.5,cz=city.z+lz+bs*.5;if(dist>CFG.cityRadius-bs*.22)continue;const hash=((Math.imul((lx/bs)|0,73856093)^Math.imul((lz/bs)|0,19349663)^Math.imul(city.x|0,83492791))>>>0)%100;const keep=dist>CFG.mixedUrbanRadius?93:43;if(hash>keep)continue;const q=(hash%37)/37;if(dist<CFG.downtownRadius){if(q<.16)createCommercialBuilding(cx,cz,'hotel');else if(q<.43)createCommercialBuilding(cx,cz,'apartment');else if(q<.55)createCommercialBuilding(cx,cz,'store');else createDowntownBuilding(cx,cz);}else if(dist<CFG.innerUrbanRadius){if(q<.22)createCommercialBuilding(cx,cz,'apartment');else if(q<.38)createCommercialBuilding(cx,cz,'store');else if(q<.45)createCommercialBuilding(cx,cz,'gas');else createMediumRise(cx,cz);}else if(dist<CFG.mixedUrbanRadius){if(q<.15)createCommercialBuilding(cx,cz,'store');else if(q<.21)createCommercialBuilding(cx,cz,'gas');else if(q<.70){createSuburbHouse(cx-bs*.19,cz-bs*.17,false,true);if(q>.38)createSuburbHouse(cx+bs*.19,cz+bs*.17,false,false);}else createMediumRise(cx,cz);}else if(q<.07)createCommercialBuilding(cx,cz,q<.03?'gas':'store');else createSuburbRow(cx,cz,q);}
     buildingRender.activeCityId=previous;
 }
 function createTown(cx,cz,index,kind='small'){
@@ -2337,7 +2343,7 @@ function createTown(cx,cz,index,kind='small'){
     // House rings along the cross-street grid; large towns get two rings.
     const rings=large?[180,420,680]:[150,300];
     for(let ri=0;ri<rings.length;ri++){const r=rings[ri],n=large?12:8;
-        for(let i=0;i<n&&buildingRender.activeTownCount<quota;i++){const a=i/n*Math.PI*2+ri*.4;createSuburbHouse(cx+Math.cos(a)*r,cz+Math.sin(a)*r,true);}
+        for(let i=0;i<n&&buildingRender.activeTownCount<quota;i++){const a=i/n*Math.PI*2+ri*.4;createSuburbHouse(cx+Math.cos(a)*r,cz+Math.sin(a)*r,true,i%2===0);}
     }
     if(buildingRender.activeTownCount<quota)createCommercialBuilding(cx+rad*.55,cz,'store');
     if(buildingRender.activeTownCount<quota)createCommercialBuilding(cx-rad*.55,cz,'gas');
@@ -2394,7 +2400,7 @@ function createStreetLights(){
         streetPoles.push({x,y,z,rotY,idx,fallen:false});
     }
     // Every other block gets a pole; this covers every suburban district without tens of thousands of redundant instances.
-    const poleSpacing=VERY_LOW_MEM?520:DECENT_GPU?220:330;
+    const poleSpacing=VERY_LOW_MEM?720:DECENT_GPU?400:560;
     const cityLampBudget=Math.floor((STREETLIGHT_CAP-1200)/CITY_CENTERS.length);
     for(let cityIndex=0;cityIndex<CITY_CENTERS.length;cityIndex++){const city=CITY_CENTERS[cityIndex],cityLimit=(cityIndex+1)*cityLampBudget,bs=CFG.blockSize,r=CFG.roadZoneRadius;
         for(let k=-r;k<=r;k+=bs){const extent=Math.sqrt(Math.max(0,CFG.cityRadius**2-k*k));
@@ -2958,9 +2964,23 @@ function createSmallTown(cx, cz){
 const forestTrees=[];
 const forestClusters=[];
 const TREE_SPECIES_COUNT = VERY_LOW_MEM ? 2 : 4;
+function _treeSwayShader(mat,leaf=false){
+    mat.onBeforeCompile=s=>{s.uniforms.natureTime=worldNature.time;s.uniforms.treeSway=worldNature.treeSway;
+        s.vertexShader=s.vertexShader.replace('#include <common>','#include <common>\nuniform float natureTime;uniform float treeSway;').replace('#include <begin_vertex>',`#include <begin_vertex>
+            vec3 csTreeAnchor=(modelMatrix*vec4(0.,0.,0.,1.)).xyz;
+            #ifdef USE_INSTANCING
+            csTreeAnchor=(modelMatrix*instanceMatrix*vec4(0.,0.,0.,1.)).xyz;
+            #endif
+            float csNear=1.-smoothstep(500.,2300.,distance(cameraPosition,csTreeAnchor));
+            float csHeight=clamp(position.y/${leaf?'11.':'9.'},0.,1.);
+            float csWave=sin(natureTime*1.9+csTreeAnchor.x*.11+csTreeAnchor.z*.07);
+            transformed.x+=csWave*treeSway*csNear*csHeight*${leaf?'.72':'.16'};
+            transformed.z+=cos(natureTime*1.43+csTreeAnchor.x*.08)*treeSway*csNear*csHeight*${leaf?'.58':'.12'};`);
+    };mat.customProgramCacheKey=()=>`city-strike-tree-sway-${leaf?'leaf':'trunk'}`;mat.needsUpdate=true;
+}
 function _treeMatsPair(trunkColor,leafColor){
-    return { trunk:makeEfficientMaterial({color:trunkColor,roughness:.95,metalness:0}),
-             leaf:makeEfficientMaterial({color:leafColor,roughness:.98,metalness:0,flatShading:true,envMapIntensity:.18}) };
+    const pair={trunk:makeEfficientMaterial({color:trunkColor,roughness:.95,metalness:0}),leaf:makeEfficientMaterial({color:leafColor,roughness:.98,metalness:0,flatShading:true,envMapIntensity:.18})};
+    _treeSwayShader(pair.trunk,false);_treeSwayShader(pair.leaf,true);return pair;
 }
 // Oak, pine, birch, maple — distinct silhouettes, bark and crown colour.
 const TREE_SPECIES_MATS=[
@@ -3120,10 +3140,10 @@ function createForests(){
         const x=Math.cos(a)*r, z=Math.sin(a)*r;
         if(Math.hypot(x,z)>CFG.worldSize*.45) continue;
         let bad=false;
-        for(const c of CITY_CENTERS) if(Math.hypot(x-c.x,z-c.z)<CFG.cityRadius+1600){bad=true;break;}
-        if(!bad)for(const t of TOWN_CENTERS) if(Math.hypot(x-t.x,z-t.z)<(t.radius||CFG.townRadius)+900){bad=true;break;}
+        for(const c of CITY_CENTERS) if(Math.hypot(x-c.x,z-c.z)<CFG.cityRadius+1450){bad=true;break;}
+        if(!bad)for(const t of TOWN_CENTERS) if(Math.hypot(x-t.x,z-t.z)<(t.radius||CFG.townRadius)+1200){bad=true;break;}
         if(bad)continue;
-        createForestCluster(x,z,200+Math.random()*380);
+        createForestCluster(x,z,390+Math.random()*720);
         made++;
     }
 }
@@ -3327,34 +3347,34 @@ function pickBuildingDestination(){
 
 // Population scaled per settlement: 120 per city, 40 per large town, 10 per small town + 200 dispersed.
 function spawnPopulation(){
-    const scale = VERY_LOW_MEM?0.35:DECENT_GPU?1:0.65;
-    const N=(n)=>Math.round(n*scale);
-    const place=(x,z)=>{if(terrainHeightAt(x,z)>1150)return false;if(pointIsBlocked(x,z,1.4))return false;spawnNPC(false,false,{x,z});return true;};
-    const sideStreet=()=>CFG.roadWidth*.5+2.5+Math.random()*7*(Math.random()<.5?-1:1);
-    for(const city of CITY_CENTERS){
-        const bs=CFG.blockSize,r=CFG.roadZoneRadius,R=CFG.cityRadius;
-        for(let i=0;i<N(120);i++){
-            const k=Math.round((Math.random()*2-1)*r/bs)*bs;
-            const extent=Math.sqrt(Math.max(0,R*R-k*k))-120;
-            const s=(Math.random()*2-1)*extent;
-            if(Math.random()<.5){for(let t=0;t<4;t++)if(place(city.x+s+(Math.random()-.5)*8,city.z+k+sideStreet()))break;}
-            else{for(let t=0;t<4;t++)if(place(city.x+k+sideStreet(),city.z+s+(Math.random()-.5)*8))break;}
+    // Population is allocated by settlement rather than a global random pool so every mapped place is alive.
+    const totals={city:200,town:20,farm:2};
+    const kindFor=(i,seed)=>{const k=(i+seed)%20;return {enemy:k<3,cop:k===3};};
+    const place=(x,z,kind)=>{
+        for(let attempt=0;attempt<8;attempt++){
+            const spread=attempt*3.5,px=x+(Math.random()-.5)*spread,pz=z+(Math.random()-.5)*spread;
+            if(terrainHeightAt(px,pz)>1150||pointIsBlocked(px,pz,1.35))continue;
+            spawnNPC(kind.cop,kind.enemy,{x:px,z:pz});return true;
         }
-    }
-    for(const t of TOWN_CENTERS){
-        const n=t.kind==='large'?N(40):N(10),ext=(t.radius||CFG.townRadius)*.5;
-        for(let i=0;i<n;i++){
-            const u=(Math.random()*2-1)*ext,o=10+Math.random()*8;
-            if(Math.random()<.5)place(t.x+u,t.z+o*(Math.random()<.5?1:-1));
-            else place(t.x+o*(Math.random()<.5?1:-1),t.z+u);
-        }
-    }
-    for(let i=0;i<N(200);i++){
-        let x,z;
-        if(roadPatrolWaypoints.length&&Math.random()<.7){const wp=roadPatrolWaypoints[(Math.random()*roadPatrolWaypoints.length)|0];x=wp.x+(Math.random()-.5)*24;z=wp.z+(Math.random()-.5)*24;}
-        else{const a=Math.random()*6.283,rr=CFG.suburbRadius+Math.random()*(CFG.mountainInner-CFG.suburbRadius-300);x=Math.cos(a)*rr;z=Math.sin(a)*rr;}
-        for(let t=0;t<5;t++)if(place(x+(Math.random()-.5)*10,z+(Math.random()-.5)*10))break;
-    }
+        return false;
+    };
+    const cityPoint=city=>{
+        const bs=CFG.blockSize,R=CFG.cityRadius,near=Math.random()<.34,range=near?Math.min(1150,R*.28):R-300;
+        const k=Math.round((Math.random()*2-1)*range/bs)*bs;
+        const extent=Math.sqrt(Math.max(0,R*R-k*k))-145,s=(Math.random()*2-1)*Math.max(40,Math.min(extent,range));
+        const off=CFG.roadWidth*.5+7+Math.random()*8;
+        return Math.random()<.5?{x:city.x+s,z:city.z+k+(Math.random()<.5?-off:off)}:{x:city.x+k+(Math.random()<.5?-off:off),z:city.z+s};
+    };
+    const townPoint=t=>{const ext=(t.radius||CFG.townRadius)*.47,u=(Math.random()*2-1)*ext,off=CFG.roadWidth*.5+7;return Math.random()<.5?{x:t.x+u,z:t.z+30+(Math.random()<.5?-off:off)}:{x:t.x+30+(Math.random()<.5?-off:off),z:t.z+u};};
+    const farmPoint=f=>{const a=Math.random()*Math.PI*2,r=22+Math.random()*34;return{x:f.x+Math.cos(a)*r,z:f.z+Math.sin(a)*r};};
+    const fill=(count,seed,getPoint)=>{let made=0,tries=0;while(made<count&&tries++<count*22){const kind=kindFor(made,seed),p=getPoint();if(place(p.x,p.z,kind))made++;}
+        // A final road/yard retry preserves the advertised total even if one lot was temporarily blocked.
+        while(made<count){const kind=kindFor(made,seed),p=getPoint();spawnNPC(kind.cop,kind.enemy,{x:p.x,z:p.z});made++;}
+    };
+    for(let i=0;i<CITY_CENTERS.length;i++)fill(totals.city,i*7,()=>cityPoint(CITY_CENTERS[i]));
+    for(let i=0;i<TOWN_CENTERS.length;i++)fill(totals.town,100+i*5,()=>townPoint(TOWN_CENTERS[i]));
+    for(let i=0;i<farmCenters.length;i++)fill(totals.farm,500+i*3,()=>farmPoint(farmCenters[i]));
+    return {cities:CITY_CENTERS.length*totals.city,towns:TOWN_CENTERS.length*totals.town,farms:farmCenters.length*totals.farm,total:npcs.length};
 }
 function spawnNPC(isCop = false, isEnemy = false, pos = null){
     const grp = new THREE.Group();
@@ -6225,8 +6245,7 @@ async function init(){
             ['clouds', () => createVolumetricClouds()],
             ['field waypoints', () => buildFieldWaypoints()],
             ['civilians', () => { spawnPopulation(); }],
-            ['enemies', () => { for(let i=0;i<CFG.enemyCount;i++) spawnNPC(false,true); }],
-            ['cops', () => { for(let i=0;i<CFG.copCount;i++) spawnNPC(true,false); }],
+            // Enemies and cops are included in each settlement's exact population allocation above.
             ['cars', () => { for(let i=0;i<CFG.carCount;i++) spawnCar(); for(let i=0;i<6;i++) spawnMotorbike(); }],
             ['highway traffic', () => spawnHighwayTraffic(VERY_LOW_MEM?10:DECENT_GPU?48:26)],
             ['aircraft', () => {
@@ -7023,7 +7042,7 @@ renderer.domElement.addEventListener('webglcontextrestored',()=>location.reload(
 document.addEventListener('visibilitychange',()=>{prevTime=performance.now();releaseMovementInput();});
 
 function updatePopulationLOD(playerPos){
- const npcd=VERY_LOW_MEM?200:LOW_MEM?420:620;for(const n of npcs){if(!n.userData.dead)n.visible=n.position.distanceToSquared(playerPos)<npcd*npcd;}
+ const npcd=VERY_LOW_MEM?280:LOW_MEM?700:1100;for(const n of npcs){if(!n.userData.dead)n.visible=n.position.distanceToSquared(playerPos)<npcd*npcd;}
  const card=VERY_LOW_MEM?1600:LOW_MEM?2600:3400;for(const c of cars)c.visible=c===currentVehicle||c.position.distanceToSquared(playerPos)<card*card;
  for(const h of helicopters)h.visible=h===currentVehicle||h.position.distanceToSquared(playerPos)<3400*3400;
  for(const j of jets)j.visible=j===currentVehicle||j.position.distanceToSquared(playerPos)<7000*7000;
