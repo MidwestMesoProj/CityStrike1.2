@@ -465,7 +465,7 @@ function createRoadSegment(ax,az,bx,bz,width,mat,shoulder){
     const seg={ax,az,bx,bz,width,len};surfaceWorld.segments.push(seg);surfaceIndex(surfaceWorld.roadCells,seg,Math.min(ax,bx)-r,Math.min(az,bz)-r,Math.max(ax,bx)+r,Math.max(az,bz)+r);
 }
 function createRoadPath(points,width){for(let i=1;i<points.length;i++)createRoadSegment(points[i-1].x,points[i-1].z,points[i].x,points[i].z,width);}
-function roadClearAt(x,z,pad=0){const S=surfaceWorld.cellSize,near=surfaceWorld.roadCells.get(Math.floor(x/S)+':'+Math.floor(z/S));if(near)for(const r of near)if(natureSegmentDistance(x,z,r.ax,r.az,r.bx,r.bz)<r.width*.5+pad+3)return false;return true;}
+function roadClearAt(x,z,pad=0){const reach=Math.max(1,pad+3),near=surfaceQuery(surfaceWorld.roadCells,x-reach,z-reach,reach*2,reach*2);for(const r of near)if(natureSegmentDistance(x,z,r.ax,r.az,r.bx,r.bz)<r.width*.5+pad+3)return false;return true;}
 function naturePointIsClear(x,z,pad=1){return roadClearAt(x,z,pad)&&!pointIsBlocked(x,z,pad);}
 function buildIrregularRoadNetwork(){
     // Grid streets plus diagonal boulevards, two ring roads and varied road
@@ -608,7 +608,7 @@ function createVolumetricClouds(){
             float n2=texture2D(noiseAtlas,fract(q*2.7+vec2(vSeed*.311,vSeed*.197)+.37)).r;
             float n3=texture2D(noiseAtlas,fract(q*4.3+vec2(vSeed*.53,vSeed*.41)+.71)).r;
             float erode=(n1-.5)*.62+(n2-.5)*.24;
-            float shape=smoothstep(1.04,0.28,vUv.length()+erode);
+            float shape=1.-smoothstep(.28,1.04,length(vUv)+erode);
             if(shape<.004)discard;
             float top=smoothstep(-.45,.65,vUv.y+(n1-.5)*.3);
             vec3 shadow=mix(vec3(.36,.39,.47),vec3(.58,.62,.7),vDark);
@@ -619,7 +619,7 @@ function createVolumetricClouds(){
             float fogf=smoothstep(fogFar*.42,fogFar,d);
             col=mix(col,fogTint,fogf*.85);
             col=mix(col,mix(vec3(1.),fogTint,.28),uInCloud);
-            float nearFade=smoothstep(2400.,140.,d);
+            float nearFade=1.-smoothstep(140.,2400.,d);
             float a=shape*(1.-fogf)*mix(1.,.4,nearFade)*(1.+uInCloud*1.6)*(1.-vDark*.28);
             gl_FragColor=vec4(clamp(col,0.,1.25),clamp(a,0.,.96));
             #include <tonemapping_fragment>
@@ -672,7 +672,8 @@ function createVolumetricClouds(){
             float dens=smoothstep(.58,.86,w)*.5;float f=smoothstep(fogFar*.6,fogFar,length(vW-cameraPosition));
             vec3 col=mix(mix(vec3(.9),sunTint,clamp(light,0.,1.)),fogTint,f*.6);
             float a=dens*(1.-f)+uInCloud*.3; if(a<.006)discard; gl_FragColor=vec4(col,a);
-            #include <tonemapping_fragment> #include <colorspace_fragment> }`});
+            #include <tonemapping_fragment>
+            #include <colorspace_fragment> }`});
     const cirrus=new THREE.Mesh(cGeo,cMat);cirrus.position.set(0,1750,0);cirrus.frustumCulled=false;cirrus.renderOrder=2;scene.add(cirrus);
     worldNature.cirrusMesh=cirrus;
     worldNature.cloudSlices=[mat,cMat];
@@ -1209,7 +1210,9 @@ let crashDamageCooldown = 0;
 const _vc = new THREE.Vector3(), _vd = new THREE.Vector3();
 const _cwp = new THREE.Vector3(), _cwq = new THREE.Quaternion();
 
-const mapState = { zoom: 0.26, panX: 0, panZ: 0, locked: false, dragging: false, dragStartX: 0, dragStartY: 0, startPanX: 0, startPanZ: 0 };
+const MAP_WORLD_MARGIN=.88, MAP_MIN_ZOOM=.0015;
+function fullWorldMapZoom(){return Math.max(MAP_MIN_ZOOM,Math.min(.4,Math.min(window.innerWidth,window.innerHeight)*MAP_WORLD_MARGIN/CFG.worldSize));}
+const mapState = { zoom: fullWorldMapZoom(), panX: 0, panZ: 0, locked: false, dragging: false, dragStartX: 0, dragStartY: 0, startPanX: 0, startPanZ: 0 };
 
 // ─── DEBRIS PANEL PHYSICS ───
 const debrisPanels = [];
@@ -2834,7 +2837,7 @@ function updateNatureGrass(p){
     let changed=false;
     for(let n=0;n<worldNature.grassBudget&&grass.jobs.length;n++){
         const job=grass.jobs.shift(),r=hash2(job.x,job.z),x=(job.x+.15+r*.7)*GRASS_CELL,z=(job.z+.15+hash2(job.z+71,job.x)*.7)*GRASS_CELL,y=terrainHeightAt(x,z);
-        const clear=y<1050&&naturePointIsClear(x,z,1.1)&&(natureSettlementMask(x,z)<.1||naturePathDistance(x,z)>6)&&Math.abs(terrainHeightAt(x+2,z)-y)<1&&Math.abs(terrainHeightAt(x,z+2)-y)<1;
+        const clear=y<1050&&naturePointIsClear(x,z,3)&&(natureSettlementMask(x,z)<.1||naturePathDistance(x,z)>6)&&Math.abs(terrainHeightAt(x+2,z)-y)<1&&Math.abs(terrainHeightAt(x,z+2)-y)<1;
         if(clear){grass.dummy.position.set(x,y-.04,z);grass.dummy.rotation.set(0,r*Math.PI*2,0);grass.dummy.scale.set(.8+r*.7,.65+r*.7,.8+r*.7);grass.dummy.updateMatrix();grass.mesh.setMatrixAt(job.index,grass.dummy.matrix);}else grass.mesh.setMatrixAt(job.index,forestHiddenMatrix);
         grass.keys[job.index]=job.key;changed=true;
     }
@@ -3714,10 +3717,10 @@ function createCityStrikePooledEffects(host) {
         void main(){
             vec2 q = vUv * 2.0 - 1.0;
             float r = length(q);
-            float edge = smoothstep(1.04, .62, r);
+            float edge = 1.0-smoothstep(.62, 1.04, r);
             float n = fbm(q*3.4 + vec2(vSeed*5.1, vSeed*1.7));
             float broken = smoothstep(.16, .90, n + (1.0-r)*.42);
-            float core = smoothstep(1.12, .12, r) * (.64 + .36*n);
+            float core = (1.0-smoothstep(.12, 1.12, r)) * (.64 + .36*n);
             float a = edge * broken * core * vAlpha;
             if(a < .006) discard;
             gl_FragColor = vec4(vTint * (0.74 + .26*n), a);
@@ -4085,25 +4088,26 @@ function createRealismFramework(host){
           uniform vec3 sunDir; uniform vec3 sunCol; uniform vec3 fogCol; uniform float fogFar;
           ${GLSL_NOISE}
           void main(){ float r=length(vL);
-            float shell=smoothstep(1.25,0.05,r);
+            float shell=1.0-smoothstep(.05,1.25,r);
             float n=rfFbm(normalize(vL+vec3(0.001))*1.6 + vL*0.9 + vec3(vSeed*4.1,vSeed*1.7,vSeed*2.9));
             float dens=shell*smoothstep(0.04,0.52,n);
             vec3 N=normalize(vL+vec3(0.0,0.28,0.0));
             float lit=0.22+0.85*max(dot(N,sunDir),0.0);
-            float under=smoothstep(0.5,-0.65,vL.y); lit*=1.0-0.38*under;
+            float under=1.0-smoothstep(-.65,.5,vL.y); lit*=1.0-0.38*under;
             vec3 col=vC*lit*sunCol;
             float d=distance(cameraPosition,vW); float fog=smoothstep(fogFar*0.55,fogFar,d);
             col=mix(col,fogCol,fog*0.85);
             float a=min(0.96, dens*vA*1.28); if(a<0.006) discard;
             gl_FragColor=vec4(col,a);
-            #include <tonemapping_fragment> #include <colorspace_fragment> }` });
+            #include <tonemapping_fragment>
+            #include <colorspace_fragment> }` });
     const fireMat = new T.ShaderMaterial({ transparent:true, depthWrite:false, blending:T.AdditiveBlending, side:T.DoubleSide,
         uniforms:{},
         vertexShader: INST_VERT,
         fragmentShader: `varying vec3 vL; varying vec3 vC; varying float vA; varying float vSeed;
           ${GLSL_NOISE}
           void main(){ float r=length(vL);
-            float core=smoothstep(1.02,0.0,r);
+            float core=1.0-smoothstep(0.0,1.02,r);
             float n=rfFbm(vL*2.3+vec3(vSeed*3.7,vSeed*2.1,vSeed*5.3));
             float hot=core*smoothstep(0.08,0.82,n);
             if(hot*vA<0.006) discard;
@@ -4112,20 +4116,22 @@ function createRealismFramework(host){
             col=mix(col, vec3(0.16,0.045,0.005), dying*0.92);
             float a=hot*vA;
             gl_FragColor=vec4(col*(0.35+hot*1.5)*(1.0-dying*0.55), a);
-            #include <tonemapping_fragment> #include <colorspace_fragment> }` });
+            #include <tonemapping_fragment>
+            #include <colorspace_fragment> }` });
     const fballMat = new T.ShaderMaterial({ transparent:true, depthWrite:false, blending:T.AdditiveBlending, side:T.DoubleSide,
         uniforms:{},
         vertexShader: INST_VERT,
         fragmentShader: `varying vec3 vL; varying vec3 vC; varying float vA; varying float vSeed;
           ${GLSL_NOISE}
           void main(){ float r=length(vL);
-            float body=smoothstep(1.06,0.18,r);
+            float body=1.0-smoothstep(.18,1.06,r);
             float n=rfFbm(vL*2.6+vec3(vSeed*2.3,vSeed*4.1,vSeed*1.7));
             float hot=body*(0.72+0.28*n);
             vec3 col=mix(vC,vec3(1.0,0.95,0.82),body*0.85)*(0.85+0.6*n);
             float a=hot*vA; if(a<0.006) discard;
             gl_FragColor=vec4(col*(0.6+a*1.6),a);
-            #include <tonemapping_fragment> #include <colorspace_fragment> }` });
+            #include <tonemapping_fragment>
+            #include <colorspace_fragment> }` });
 
     // Vertical cylindrical shock front (the 30-ft ground blast wave).
     const wallGeo = new T.CylinderGeometry(1,1,1,56,1,true);
@@ -4146,7 +4152,8 @@ function createRealismFramework(host){
               float a=broken*rim*vA*(1.0-fog*0.9); if(a<0.006) discard;
               vec3 col=mix(vec3(1.0,0.96,0.82),fogCol,fog);
               gl_FragColor=vec4(col*(0.5+1.5*a),a);
-              #include <tonemapping_fragment> #include <colorspace_fragment> }` });
+              #include <tonemapping_fragment>
+            #include <colorspace_fragment> }` });
 
     function makePool(cap, geo, mat){
         const mesh = new T.InstancedMesh(geo, mat, cap);
@@ -4186,13 +4193,14 @@ function createRealismFramework(host){
                 float flick=0.82+0.18*sin(vSeed*37.0);
                 float r1=pow(0.5+0.5*sin(ang*14.0+vSeed*9.0),9.0);
                 float r2=pow(0.5+0.5*sin(ang*7.0-vSeed*4.0),12.0);
-                float core=pow(smoothstep(0.55,0.0,d),2.1);
+                float core=pow(1.0-smoothstep(0.0,.55,d),2.1);
                 float halo=pow(max(0.0,1.0-d),1.7);
                 float a=(core*1.25+halo*(0.16+r1*0.62+r2*0.34))*vA*flick;
                 if(a<0.004)discard;
                 vec3 col=vC*(core*2.0+halo*0.85)+vec3(1.0,0.97,0.92)*core;
                 gl_FragColor=vec4(col,min(0.98,a));
-                #include <tonemapping_fragment> #include <colorspace_fragment> }` });
+                #include <tonemapping_fragment>
+            #include <colorspace_fragment> }` });
     const flareMesh=new T.InstancedMesh(flareGeo,flareMat,CAP_FLARE);
     flareMesh.frustumCulled=false; flareMesh.renderOrder=9;
     const flareCol=new T.InstancedBufferAttribute(new Float32Array(CAP_FLARE*3),3);
@@ -5072,7 +5080,7 @@ const GradeShader = {
             float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
             col = mix(vec3(l), col, uSaturation);
             col = (col - 0.5) * uContrast + 0.5;
-            float vig = smoothstep(1.05, 0.30, length(d) * 1.35);
+            float vig = 1.0-smoothstep(0.30, 1.05, length(d) * 1.35);
             col *= mix(1.0, vig, uVignette);
             float g = hash(uv * 1024.0 + uTime * 37.0) - 0.5;
             col += g * uGrain;
@@ -5280,7 +5288,7 @@ function drawMinimap(){
 }
 
 // ── Satellite topographic basemap: elevation/land-use colour + contours ──
-const TOPO_RES=720, TOPO_RANGE=33000;
+const TOPO_RES=768, TOPO_RANGE=CFG.worldSize*.5;
 let topoCache=null, topoCacheBuilding=false, topoRows=0, topoCtx2=null, topoImg=null;
 function topoColor(x,z){
     const h=terrainHeightAt(x,z);
@@ -5313,7 +5321,7 @@ function ensureTopoCache(){
             }
         }
         if(topoRows<TOPO_RES)requestAnimationFrame(step);
-        else{topoCtx2.putImageData(topoImg,0,0);topoCache=c;topoCacheBuilding=false;topoImg=null;topoCtx2=null;}
+        else{topoCtx2.putImageData(topoImg,0,0);topoCache=c;topoCacheBuilding=false;topoImg=null;topoCtx2=null;if(isMapOpen)drawFullMap();}
     }
     requestAnimationFrame(step);
 }
@@ -5429,7 +5437,7 @@ function drawFullMap(){
 }
 
 function updateMapUI(){
-    mapZoomLabel.textContent = mapState.zoom.toFixed(2) + '×';
+    mapZoomLabel.textContent = (mapState.zoom<.1?mapState.zoom.toFixed(3):mapState.zoom.toFixed(2)) + '×';
     mapLockBtn.classList.toggle('locked', mapState.locked);
     mapLockBtn.textContent = mapState.locked ? '🔒 LOCKED' : '🔓 UNLOCKED';
 }
@@ -5438,11 +5446,11 @@ document.getElementById('map-zoom-in').addEventListener('click', ()=>{
     updateMapUI(); drawFullMap();
 });
 document.getElementById('map-zoom-out').addEventListener('click', ()=>{
-    mapState.zoom = Math.max(0.006, mapState.zoom / 1.45);
+    mapState.zoom = Math.max(MAP_MIN_ZOOM, mapState.zoom / 1.45);
     updateMapUI(); drawFullMap();
 });
 document.getElementById('map-reset').addEventListener('click', ()=>{
-    mapState.zoom = 0.26; mapState.panX = 0; mapState.panZ = 0;
+    mapState.zoom = fullWorldMapZoom(); mapState.panX = 0; mapState.panZ = 0;
     updateMapUI(); drawFullMap();
 });
 mapLockBtn.addEventListener('click', ()=>{
