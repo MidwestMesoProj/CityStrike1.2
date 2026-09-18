@@ -4367,7 +4367,8 @@ function applyCameraShake(amount){ shakeAmount = Math.max(shakeAmount, amount); 
 function createRealismFramework(host){
     const T = host.THREE, scene = host.scene, camera = host.camera;
     const tierMul = host.veryLowEnd ? .32 : host.lowEnd ? .6 : 1;
-    const CAP_SMOKE = host.veryLowEnd ? 300 : host.lowEnd ? 720 : 1200;
+    // Dense overlapping volumes are required for a smooth, non-sparse billowing blast cloud.
+    const CAP_SMOKE = host.veryLowEnd ? 360 : host.lowEnd ? 900 : 1800;
     const CAP_FIRE  = host.veryLowEnd ? 110 : host.lowEnd ? 240 : 430;
     const CAP_FBALL = 14, CAP_WALL = host.veryLowEnd ? 6 : 16;
     const CAP_FLARE = host.veryLowEnd ? 3 : 8;
@@ -4672,10 +4673,10 @@ function createRealismFramework(host){
     function spawnSmoke(o){
         const i=smoke.alloc(), p=smoke.st[i];
         p.alive=true;p.x=o.x;p.y=o.y;p.z=o.z;p.vx=o.vx||0;p.vy=o.vy||0;p.vz=o.vz||0;
-        p.r=o.r||4;p.maxR=o.maxR||p.r*6;p.vr=o.vr||6;p.age=-(o.delay||0);p.life=o.life||14;p.cloud=o.cloud||null;
-        p.alpha=o.alpha==null?.8:o.alpha; p.hot=o.hot==null?.5:o.hot; p.buoy=o.buoy==null?1:o.buoy;
+        p.r=o.r||4;p.maxR=o.maxR||p.r*6;p.vr=o.vr||6;p.age=-(o.delay||0);p.life=o.life||14;
+        p.alpha=o.alpha==null?.8:o.alpha;p.hot=o.hot==null?.5:o.hot;p.buoy=o.buoy==null?1:o.buoy;p.riseDelay=o.riseDelay||0;
         p.axis=o.axis?{x:o.axis.x,z:o.axis.z,pull:o.axisPull==null?.25:o.axisPull}:null;p.coolStart=o.coolStart==null?.7:o.coolStart;p.groundLock=!!o.groundLock;p.groundOffset=o.groundOffset==null?Math.max(.35,p.y-host.getTerrainHeight(p.x,p.z)):o.groundOffset;
-        p.col0=new T.Color(o.hotColor||0x241d18); p.col1=new T.Color(o.col||0x6c6a6d); p.seed=Math.random()*40;
+        p.col0=new T.Color(o.hotColor||0x241d18);p.colMid=new T.Color(o.warmColor||o.col||0x50483f);p.col1=new T.Color(o.col||0x6c6a6d);p.seed=Math.random()*40;
         smoke.seed.setX(i,p.seed); smoke.writeColor(i,o.hotColor||0x241d18);
         return p;
     }
@@ -4707,33 +4708,23 @@ function createRealismFramework(host){
     }
     function updatePools(dt, windX, windZ){
         // smoke — buoyant expansion, Taylor entrainment, axial pull into the stem
-        for(let i=0;i<CAP_SMOKE;i++){ const p=smoke.st[i]; if(!p.alive) continue;p.age+=dt;
+        for(let i=0;i<CAP_SMOKE;i++){const p=smoke.st[i];if(!p.alive)continue;p.age+=dt;
             if(p.age<0){smoke.mesh.setMatrixAt(i,HIDDEN);smoke.alp.setX(i,0);continue;}
             if(p.age>=p.life){p.alive=false;smoke.mesh.setMatrixAt(i,HIDDEN);smoke.alp.setX(i,0);continue;}
-            if(p.cloud){
-                // Blast-cloud puffs never integrate a free upward velocity. Their shared form grows as one
-                // coherent volume, preventing isolated, floating smoke balls and synchronising dissipation.
-                const c=p.cloud,g=T.MathUtils.smoothstep(p.age,0,c.build),capG=T.MathUtils.smoothstep(p.age,c.build*.22,c.build),drift=Math.min(p.age,c.life)*c.drift;
-                let rr=0,yy=0;
-                if(c.part==='stem'){rr=c.stem*(.34+.84*c.u)*g;yy=c.height*g*(.04+.76*c.u);}
-                else if(c.part==='cap'){rr=c.capR*c.u*capG;yy=c.height*g*(.73+.14*c.v)+(1-c.u*c.u)*c.height*.17*capG;}
-                else {rr=c.baseR*c.u*g;yy=c.height*g*(.03+.15*c.v);}
-                const wobble=Math.sin(c.phase+p.age*(.7+c.u))*c.puff*.09*g;
-                p.x=c.x+Math.cos(c.angle)*(rr+wobble)+windX*drift;p.z=c.z+Math.sin(c.angle)*(rr+wobble)+windZ*drift;p.y=c.y+yy;
-                p.r=c.puff*(.45+.55*g)*(c.part==='cap'?1.16:1);const appear=T.MathUtils.smoothstep(p.age,0,.14),fadeStart=c.life*.78,fade=p.age>fadeStart?1-T.MathUtils.smoothstep(p.age,fadeStart,c.life):1;
-                smoke.alp.setX(i,p.alpha*appear*fade);const cool=T.MathUtils.smoothstep(p.age,p.coolStart,p.coolStart+.45),col=_tmpC.copy(p.col0).lerp(p.col1,cool);smoke.col.setXYZ(i,col.r,col.g,col.b);setPuffMatrix(smoke,i,p,p.r);continue;
-            }
-            const heat=Math.max(0,1-p.age/(p.life*0.62));
-            p.vy+=(2.2+p.buoy*8.5)*heat*dt;
+            // The early cloud spreads laterally before thermal lift takes over, giving the blast a
+            // dense, low billow instead of a narrow fountain of detached spheres.
+            const heat=Math.max(0,1-p.age/(p.life*.62));
+            const liftAge=Math.max(0,p.age-p.riseDelay),lift=liftAge>0?heat*(1-Math.exp(-liftAge*4.2)):0;
+            p.vy+=(2.2+p.buoy*8.5)*lift*dt;
             const entrain=p.vr*1.5*(1-Math.exp(-p.age*2.3))+1.8;
-            p.r=Math.min(p.maxR, p.r+entrain*dt);
-            if(p.axis){ p.vx+=(p.axis.x-p.x)*p.axis.pull*dt; p.vz+=(p.axis.z-p.z)*p.axis.pull*dt; }
-            p.vx+=(windX-p.vx)*Math.min(1,.10*dt); p.vz+=(windZ-p.vz)*Math.min(1,.10*dt);
+            p.r=Math.min(p.maxR,p.r+entrain*dt);
+            if(p.axis){p.vx+=(p.axis.x-p.x)*p.axis.pull*dt;p.vz+=(p.axis.z-p.z)*p.axis.pull*dt;}
+            p.vx+=(windX-p.vx)*Math.min(1,.10*dt);p.vz+=(windZ-p.vz)*Math.min(1,.10*dt);
             p.x+=p.vx*dt;p.z+=p.vz*dt;if(p.groundLock){p.y=host.getTerrainHeight(p.x,p.z)+p.groundOffset;p.vy=0;}else p.y+=p.vy*dt;
-            const ta=p.age/p.life,appear=T.MathUtils.smoothstep(ta,.0,.10);
-            const fade=ta>.62?Math.max(0,1-(ta-.62)/.38):1;
+            const ta=p.age/p.life,appear=T.MathUtils.smoothstep(ta,0,.065),fade=ta>.72?Math.max(0,1-(ta-.72)/.28):1;
             smoke.alp.setX(i,p.alpha*appear*fade);
-            const cool=T.MathUtils.smoothstep(p.age,p.coolStart,p.coolStart+.85),c=_tmpC.copy(p.col0).lerp(p.col1,cool);smoke.col.setXYZ(i,c.r,c.g,c.b);
+            const warm=T.MathUtils.smoothstep(p.age,.12,Math.max(.18,p.coolStart)),cool=T.MathUtils.smoothstep(p.age,p.coolStart,p.coolStart+1.05);
+            const c=_tmpC.copy(p.col0).lerp(p.colMid,warm).lerp(p.col1,cool);smoke.col.setXYZ(i,c.r,c.g,c.b);
             setPuffMatrix(smoke,i,p,p.r);
         }
         // fire — fast hot core; when it expires it births a soot puff so fires
@@ -4771,50 +4762,66 @@ function createRealismFramework(host){
         gate(smoke);gate(fire);gate(fballs);gate(walls);
     }
 
-    // -- Detonation event = a shared, coherent explosion-cloud lifecycle ------
-    function spawnExplosionCloud(ev){
-        const cloudLife=ev.nuke?34:ev.moab?27:ev.big?20:13,build=ev.nuke?7.4:ev.moab?5.4:ev.big?3.8:2.7;
-        const cloud={x:ev.x,y:ev.gy,z:ev.z,life:cloudLife,build,drift:ev.nuke?.07:ev.moab?.09:.12,
-            height:ev.R*(ev.nuke?3.65:ev.moab?2.65:ev.big?.86:.42),capR:ev.R*(ev.nuke?1.32:ev.moab?1.12:ev.big?.55:.34),
-            stem:ev.R*(ev.nuke?.12:ev.moab?.14:ev.big?.11:.09),baseR:ev.R*(ev.nuke?.52:ev.moab?.48:ev.big?.34:.24),puff:ev.R*(ev.nuke?.055:ev.moab?.062:ev.big?.052:.046)+2};
-        // Stem + cap + ground skirt stay registered to this one clock. At low altitude ordinary blasts
-        // form a tall expanding cloud; nuclear/MOAB blasts form a proportionally taller mushroom cloud.
-        const count=Math.round((ev.nuke?300:ev.moab?210:ev.big?112:52)*tierMul);
-        for(let i=0;i<count;i++){
-            const q=i/count,part=q<.37?'stem':q<.84?'cap':'base',u=part==='stem'?Math.pow(Math.random(),.72):Math.sqrt(Math.random());
-            const c={...cloud,part,u,v:Math.random()*2-1,angle:Math.random()*Math.PI*2,phase:Math.random()*6.283};
-            spawnSmoke({x:ev.x,y:ev.gy,z:ev.z,r:c.puff,maxR:c.puff*1.3,vr:0,life:cloudLife,delay:.66,alpha:ev.nuke?.91:ev.moab?.88:.82,
-                hot:0,buoy:0,coolStart:0,hotColor:ev.nuke?0x393630:ev.moab?0x453629:0x3d3934,col:ev.nuke?0x252627:ev.moab?0x2b2928:0x292a2b,cloud:c});
+    // -- Detonation event = dense billowing smoke with a continuously fed column --
+    function spawnExplosionBillow(ev){
+        // Hundreds of overlapping puffs begin immediately after the flash. They spread first, then
+        // acquire lift, so the first cloud reads as a broad rolling volume rather than a thin stem.
+        const n=Math.round((ev.nuke?360:ev.moab?235:ev.big?136:64)*tierMul);
+        const hot=[0xee4a18,0xdb3c18,0xb82d16,0x9a301a],warm=[0x91421e,0x783a24,0x5e382a,0x4c332b];
+        for(let i=0;i<n;i++){
+            const a=Math.random()*6.283,rr=Math.sqrt(Math.random())*ev.R*(ev.nuke?.66:ev.moab?.62:ev.big?.55:.43),edge=rr/(ev.R||1);
+            const baseY=ev.gy+ev.R*(.035+Math.pow(Math.random(),1.7)*(ev.nuke?.26:ev.moab?.23:.18));
+            const kick=ev.R*(.105+(1-edge)*.16+Math.random()*.10),shade=i&3;
+            spawnSmoke({x:ev.x+Math.cos(a)*rr,y:baseY,z:ev.z+Math.sin(a)*rr,vx:Math.cos(a)*kick,vz:Math.sin(a)*kick,vy:ev.R*(.005+Math.random()*.009),
+                r:ev.R*(ev.nuke?.040:ev.moab?.046:ev.big?.042:.038)+2,maxR:ev.R*(ev.nuke?.46:ev.moab?.40:ev.big?.32:.24)+8,vr:ev.R*(ev.nuke?.105:ev.moab?.12:ev.big?.10:.085),
+                life:(ev.nuke?31:ev.moab?24:ev.big?18:11)*(.84+Math.random()*.28),alpha:ev.nuke?.90:ev.moab?.88:.84,hot:.98,buoy:1.35,axis:ev.big?{x:ev.x,z:ev.z}:null,axisPull:.065,
+                riseDelay:.22+Math.random()*.30,coolStart:.70+Math.random()*.16,hotColor:hot[shade],warmColor:warm[shade],col:ev.nuke?0x242526:ev.moab?0x282727:0x2b2b2a});
         }
-        ev.cloudEnd=.66+cloudLife;
+        // A dense, terrain-following dust collar remains below the main cloud and never becomes a flying artifact.
+        const dustN=Math.round((ev.nuke?118:ev.moab?82:ev.big?48:18)*tierMul);
+        for(let i=0;i<dustN;i++){const a=Math.random()*6.283,rr=Math.random()*ev.R*.63;spawnSmoke({x:ev.x+Math.cos(a)*rr,y:ev.gy+1.5,z:ev.z+Math.sin(a)*rr,vx:Math.cos(a)*ev.R*(.32+Math.random()*.28),vz:Math.sin(a)*ev.R*(.32+Math.random()*.28),vy:0,r:ev.R*.034+2,maxR:ev.R*(.25+Math.random()*.14),vr:ev.R*.21,life:7+Math.random()*5,alpha:.64+Math.random()*.18,hot:0,buoy:0,groundLock:true,groundOffset:1.1+Math.random()*2.4,coolStart:0,hotColor:0x5a4132,warmColor:0x51473f,col:0x3b3c3c});}
+    }
+    function spawnColumnPuff(ev,stemH,cap=false){
+        const top=Math.max(0,Math.min(1,stemH/(ev.maxH||1))),a=Math.random()*6.283;
+        if(cap){
+            const capGrow=T.MathUtils.smoothstep(top,.46,.98),rr=Math.sqrt(Math.random())*ev.R*(ev.nuke?1.34:ev.moab?1.10:.60)*capGrow;
+            spawnSmoke({x:ev.x+Math.cos(a)*rr,y:ev.gy+stemH*(.80+Math.random()*.18),z:ev.z+Math.sin(a)*rr,vx:Math.cos(a)*ev.R*(.025+Math.random()*.04),vz:Math.sin(a)*ev.R*(.025+Math.random()*.04),vy:ev.rise*.10+Math.random()*4,
+                r:ev.R*(ev.nuke?.058:ev.moab?.066:.052)+4,maxR:ev.R*(ev.nuke?1.04:ev.moab?.82:.52),vr:ev.R*.075,life:(ev.nuke?33:ev.moab?27:20)*(.84+Math.random()*.22),alpha:ev.nuke?.90:ev.moab?.88:.82,hot:.58,buoy:.88,axis:{x:ev.x,z:ev.z},axisPull:.11,coolStart:.28+Math.random()*.18,hotColor:0x7d3d23,warmColor:0x4d3930,col:ev.nuke?0x252627:0x2b2928});
+        }else{
+            const f=Math.pow(Math.random(),.78),yy=f*stemH,stemR=ev.R*(ev.nuke?.085:ev.moab?.10:ev.big?.085:.072)+yy*(ev.nuke?.075:ev.moab?.082:.068),rr=Math.pow(Math.random(),.72)*stemR;
+            spawnSmoke({x:ev.x+Math.cos(a)*rr,y:ev.gy+yy,z:ev.z+Math.sin(a)*rr,vx:Math.cos(a)*ev.R*(Math.random()-.5)*.045,vz:Math.sin(a)*ev.R*(Math.random()-.5)*.045,vy:ev.rise*(.16+Math.random()*.13),
+                r:stemR*(.88+Math.random()*.55),maxR:stemR*(ev.nuke?8.5:ev.moab?7.8:6.5)+ev.R*.20,vr:ev.R*.035+5,life:(ev.nuke?30:ev.moab?25:18)*(.82+Math.random()*.28),alpha:ev.nuke?.90:ev.moab?.88:.84,hot:.70,buoy:1.38-f*.35,axis:{x:ev.x,z:ev.z},axisPull:.34*(1-f)+.13,riseDelay:.05,coolStart:.22+Math.random()*.18,hotColor:0x9b421e,warmColor:0x553a2e,col:ev.nuke?0x242526:ev.moab?0x292827:0x2a2b2b});
+        }
     }
     function detonate(pos,cfg,blastType){
         const R=Math.max(4,cfg.radius||30),nuke=blastType==='nuke',moab=blastType==='moab',napalm=blastType==='napalm',big=nuke||moab||R>=95;
         const sc=nuke?2.6:moab?1.7:R>=220?1.25:R>=95?.85:.5,gy=host.getTerrainHeight(pos.x,pos.z),fogDur=nuke?95:moab?70:big?38:0;
-        const ev={x:pos.x,y:Math.max(gy,pos.y||gy),z:pos.z,R,age:0,sc,big,nuke,moab,napalm,life:Math.max(fogDur,nuke?35:moab?28:big?21:14),frontTimer:0,fogTimer:0,gy,fogDur};events.push(ev);
+        const ev={x:pos.x,y:Math.max(gy,pos.y||gy),z:pos.z,R,age:0,sc,big,nuke,moab,napalm,columnDur:nuke?18:moab?13:big?8:3.5,life:Math.max(fogDur,nuke?37:moab?30:big?22:14),stemAcc:0,capAcc:0,frontTimer:0,fogTimer:0,gy,fogDur,rise:R*(nuke?.31:moab?.26:big?.17:.15),maxH:R*(nuke?3.8:moab?2.7:big?1.18:.62)};
+        events.push(ev);
         impulseDebris(pos.x,pos.y||gy,pos.z,R*1.1,R*.28);
-        const glareRange=nuke?14000:moab?8500:big?4200:1500,glare=Math.pow(T.MathUtils.clamp(1-Math.hypot(camera.position.x-pos.x,camera.position.y-gy,camera.position.z-pos.z)/glareRange,0,1),.55);
-        flashLevel=Math.max(flashLevel,(nuke?1:moab?.92:big?.62:R>=40?.32:.14)*glare);
+        const glareRange=nuke?14000:moab?8500:big?4200:1500,glare=Math.pow(T.MathUtils.clamp(1-Math.hypot(camera.position.x-pos.x,camera.position.y-gy,camera.position.z-pos.z)/glareRange,0,1),.55);flashLevel=Math.max(flashLevel,(nuke?1:moab?.92:big?.62:R>=40?.32:.14)*glare);
         if(nuke)spawnFlare({x:pos.x,y:gy+R*.22,z:pos.z,s0:R*.3,s1:R*4.2,life:2.8,color:0xdceaff});else if(moab)spawnFlare({x:pos.x,y:gy+R*.2,z:pos.z,s0:R*.25,s1:R*2.6,life:2,color:0xffd2a0});else if(big)spawnFlare({x:pos.x,y:gy+R*.18,z:pos.z,s0:R*.18,s1:R*1.3,life:1.15,color:0xffe9c8});
-        // The orange/red thermal core is brief and ground-bound; it hands off to one growing cloud at .66 s.
-        spawnFireball({x:pos.x,y:gy+R*.12,z:pos.z,r0:R*.04,rMax:R*(nuke?.55:big?.4:.3),grow:.22,life:.66,color:0xff6622,groundY:gy,grounded:true,contact:1});
-        if(big)spawnFireball({x:pos.x,y:gy+R*.1,z:pos.z,r0:R*.08,rMax:R*(nuke?.5:moab?.42:.26),grow:nuke?1:.75,life:.72,color:nuke?0xff7422:moab?0xf04a16:0xd62d12,vy:0,groundY:gy,grounded:true,contact:1});
-        const wallH=nuke?11.5:moab?10.5:Math.max(3.4,R*.075),wallCount=nuke?3:moab?2:big?2:1;
-        for(let w=0;w<wallCount;w++)spawnWall({x:pos.x,z:pos.z,groundY:gy+.2,r0:R*.06,r1:R*(1.55+w*.45),height:wallH*(1-w*.14),k:nuke?1.28:2.05,life:2.15+w*.42,alpha:.82-w*.14,delay:w*(nuke?.42:.26)});
-        const fireShells=big?4:3,fireN=Math.round((big?44:20)*tierMul*(.7+sc));
-        for(let sh=0;sh<fireShells;sh++){const rr=R*(.08+sh*.15),n=Math.max(6,Math.round(fireN/(sh*.75+1)));for(let i=0;i<n;i++){const a=i/n*Math.PI*2+sh*.7,rr2=rr*(.75+Math.random()*.5);spawnFire({x:pos.x+Math.cos(a)*rr2,y:gy+R*.08+Math.random()*R*.16,z:pos.z+Math.sin(a)*rr2,vx:Math.cos(a)*R*(.32+sh*.55),vz:Math.sin(a)*R*(.32+sh*.55),vy:R*.24+Math.random()*R*.16,r:R*(.032+Math.random()*.034)*sc+1.4,maxR:R*.19*sc+8,vr:R*.62,life:.52+Math.random()*.14,color:[0xff7624,0xe33112,0xff5318,0x98120c][sh%4],chain:false});}}
-        spawnExplosionCloud(ev);
+        spawnFireball({x:pos.x,y:gy+R*.12,z:pos.z,r0:R*.04,rMax:R*(nuke?.55:big?.4:.3),grow:.22,life:.68,color:0xff6622,groundY:gy,grounded:true,contact:1});
+        if(big)ev.fball=spawnFireball({x:pos.x,y:gy+R*.1,z:pos.z,r0:R*.08,rMax:R*(nuke?.5:moab?.42:.26),grow:nuke?1:.75,life:nuke?2.8:2.3,color:nuke?0xff7422:moab?0xf04a16:0xd62d12,vy:R*(nuke?.032:moab?.028:.022),groundY:gy,grounded:true,contact:.72});
+        const wallH=nuke?11.5:moab?10.5:Math.max(3.4,R*.075),wallCount=nuke?3:moab?2:big?2:1;for(let w=0;w<wallCount;w++)spawnWall({x:pos.x,z:pos.z,groundY:gy+.2,r0:R*.06,r1:R*(1.55+w*.45),height:wallH*(1-w*.14),k:nuke?1.28:2.05,life:2.15+w*.42,alpha:.82-w*.14,delay:w*(nuke?.42:.26)});
+        const fireShells=big?4:3,fireN=Math.round((big?54:25)*tierMul*(.7+sc));for(let sh=0;sh<fireShells;sh++){const rr=R*(.08+sh*.15),count=Math.max(7,Math.round(fireN/(sh*.75+1)));for(let i=0;i<count;i++){const a=i/count*Math.PI*2+sh*.7,rr2=rr*(.75+Math.random()*.5);spawnFire({x:pos.x+Math.cos(a)*rr2,y:gy+R*.08+Math.random()*R*.16,z:pos.z+Math.sin(a)*rr2,vx:Math.cos(a)*R*(.32+sh*.55),vz:Math.sin(a)*R*(.32+sh*.55),vy:R*.24+Math.random()*R*.16,r:R*(.032+Math.random()*.034)*sc+1.4,maxR:R*.19*sc+8,vr:R*.62,life:.58+Math.random()*.18,color:[0xff7624,0xe33112,0xff5318,0x98120c][sh%4],chain:false});}}
+        spawnExplosionBillow(ev);
         if(big){const fogN=Math.round((nuke?70:moab?52:28)*tierMul);for(let i=0;i<fogN;i++){const a=i/fogN*Math.PI*2+Math.random()*.2,band=.1+Math.random()*.5,spd=R*(nuke?1.05:moab?.95:.75)*(1.4-band);spawnGroundFog({x:pos.x+Math.cos(a)*R*.08,y:gy+4,z:pos.z+Math.sin(a)*R*.08,vx:Math.cos(a)*spd,vz:Math.sin(a)*spd,r:R*(nuke?.07:moab?.06:.05)+Math.random()*6,maxR:R*(nuke?.3:moab?.28:.2)+12,vr:R*(nuke?.05:.04),life:(nuke?75:moab?60:32)+Math.random()*18,ys:.2+Math.random()*.1,alpha:.78+Math.random()*.16,hotColor:nuke?0x2c2925:0x33271c,col:nuke?0x6a6660:0x6f5d48});}}
-        const groundChunks=Math.round((nuke?180:moab?120:big?60:R>=30?22:8)*tierMul);fracture(pos,pos,groundChunks,['stone','dirt'],Math.min(52,R*.16),R>200?2.2:1.2);
+        const chunks=Math.round((nuke?180:moab?120:big?60:R>=30?22:8)*tierMul);fracture(pos,pos,chunks,['stone','dirt'],Math.min(52,R*.16),R>200?2.2:1.2);
         const thermo=blastType==='thermobaric';if(napalm||thermo){const fn=napalm?40:24,fr=napalm?1.05:1.25;for(let i=0;i<Math.round(fn*tierMul);i++){const a=Math.random()*6.283,rr=Math.random()*R*fr,x=pos.x+Math.cos(a)*rr,z=pos.z+Math.sin(a)*rr;spawnFire({x,y:host.getTerrainHeight(x,z)+.6,z,r:1.2+Math.random()*1.8,maxR:7,vr:.8,life:3+Math.random()*4,vy:2.2,chain:true});}}
         return ev;
     }
     function updateEvents(dt,windX,windZ){
         for(let e=events.length-1;e>=0;e--){const ev=events[e];ev.age+=dt;
-            // The only secondary blast dust is terrain-locked. It cannot turn into detached rising puffs.
-            ev.frontTimer-=dt;if(ev.frontTimer<=0&&ev.age<(ev.big?2.7:1.2)){ev.frontTimer=ev.big?.16:.22;const frontR=Math.min(ev.R*1.5,ev.R*.1+ev.age*ev.R*.95),n=Math.round((ev.big?16:8)*tierMul);for(let i=0;i<n;i++){const a=Math.random()*6.283,rr=frontR*(.9+Math.random()*.2);spawnSmoke({x:ev.x+Math.cos(a)*rr,y:ev.gy+1.2,z:ev.z+Math.sin(a)*rr,vx:Math.cos(a)*ev.R*.55,vz:Math.sin(a)*ev.R*.55,vy:0,r:3.5+Math.random()*3.5,maxR:ev.R*.2+10,vr:ev.R*.28,life:5.5,alpha:.52,hot:0,buoy:0,groundLock:true,groundOffset:1.1,hotColor:0x4b4236,col:0x706b63});}}
+            if(ev.age<ev.columnDur){
+                const stemH=Math.min(ev.maxH,ev.age*ev.rise);ev.stemAcc+=dt*(ev.nuke?48:ev.moab?37:ev.big?27:15)*tierMul;
+                while(ev.stemAcc>1){ev.stemAcc-=1;spawnColumnPuff(ev,stemH,false);}
+                if(stemH>ev.maxH*.45){ev.capAcc+=dt*(ev.nuke?28:ev.moab?21:ev.big?14:0)*tierMul;while(ev.capAcc>1){ev.capAcc-=1;spawnColumnPuff(ev,stemH,true);}}
+            }
+            // Dust thrown by the shock front is kept on the terrain, not released into the sky.
+            ev.frontTimer-=dt;if(ev.frontTimer<=0&&ev.age<(ev.big?2.7:1.2)){ev.frontTimer=ev.big?.16:.22;const frontR=Math.min(ev.R*1.5,ev.R*.1+ev.age*ev.R*.95),n=Math.round((ev.big?16:8)*tierMul);for(let i=0;i<n;i++){const a=Math.random()*6.283,rr=frontR*(.9+Math.random()*.2);spawnSmoke({x:ev.x+Math.cos(a)*rr,y:ev.gy+1.2,z:ev.z+Math.sin(a)*rr,vx:Math.cos(a)*ev.R*.55,vz:Math.sin(a)*ev.R*.55,vy:0,r:3.5+Math.random()*3.5,maxR:ev.R*.2+10,vr:ev.R*.28,life:5.5,alpha:.52,hot:0,buoy:0,groundLock:true,groundOffset:1.1,coolStart:0,hotColor:0x4b4236,warmColor:0x484541,col:0x3a3b3b});}}
             if(ev.fogDur){ev.fogTimer-=dt;const raceDur=ev.nuke?13:ev.moab?10:6;if(ev.fogTimer<=0&&ev.age<raceDur){ev.fogTimer=.16;const front=ev.R*(1-Math.exp(-ev.age*(ev.nuke?.3:ev.moab?.36:.5)))*1.02,n=Math.round((ev.nuke?26:ev.moab?22:12)*tierMul);for(let i=0;i<n;i++){const a=i/n*Math.PI*2+Math.random()*.3;spawnGroundFog({x:ev.x+Math.cos(a)*front,y:ev.gy+4,z:ev.z+Math.sin(a)*front,vx:Math.cos(a)*ev.R*(ev.nuke?.5:ev.moab?.55:.45),vz:Math.sin(a)*ev.R*(ev.nuke?.5:ev.moab?.55:.45),r:ev.R*(ev.nuke?.06:ev.moab?.055:.045)+Math.random()*5,maxR:ev.R*(ev.nuke?.26:ev.moab?.24:.18)+10,vr:ev.R*.03,life:(ev.nuke?80:ev.moab?62:30)+Math.random()*20,ys:.16+Math.random()*.08,alpha:.8,hotColor:ev.nuke?0x262320:0x2f251a,col:ev.nuke?0x665f58:0x6c5a45});}}}
-            if(ev.age>ev.life)events.splice(e,1);
+            if(ev.age>ev.life&&!ev.fball)events.splice(e,1);
         }
     }
     // 1 inside the dust disk = visibility should be choked to a few hundred metres.
