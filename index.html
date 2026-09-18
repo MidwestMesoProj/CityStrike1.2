@@ -577,28 +577,30 @@ function createWorldTerrain(){
     if(worldNature.material)return;
     worldNature.grassColor=new THREE.Color(0x718450);worldNature.soilColor=new THREE.Color(0x9a8767);worldNature.rockColor=new THREE.Color(0x7b817c);worldNature.snowColor=new THREE.Color(0xd9dedb);worldNature.color=new THREE.Color();
     worldNature.scorches={value:Array.from({length:8},()=>new THREE.Vector4(0,0,0,0))};
-    const mat=makeEfficientMaterial({vertexColors:true,map:groundBaseTex,roughness:.97,metalness:0,envMapIntensity:.22,side:THREE.DoubleSide,transparent:false,opacity:1,depthWrite:true,depthTest:true});
-    mat.onBeforeCompile=function(s){s.uniforms.natureNoise={value:getNatureNoise()};s.uniforms.surfaceMap={value:this.userData.surfaceTexture};s.uniforms.surfaceWetness=worldNature.wetness;s.uniforms.scorches=worldNature.scorches;
-        s.vertexShader=s.vertexShader.replace('#include <common>','#include <common>\nattribute float natureRural;attribute vec2 surfaceUV;varying vec2 vSurfaceUV;varying vec3 vNatureWorld;varying float vNatureRural;').replace('#include <begin_vertex>','#include <begin_vertex>\nvNatureWorld=(modelMatrix*vec4(transformed,1.)).xyz;vSurfaceUV=surfaceUV;vNatureRural=natureRural;');
-        s.fragmentShader=s.fragmentShader.replace('#include <common>','#include <common>\nuniform sampler2D natureNoise;uniform sampler2D surfaceMap;uniform float surfaceWetness;uniform vec4 scorches[8];varying vec2 vSurfaceUV;varying vec3 vNatureWorld;varying float vNatureRural;').replace('#include <color_fragment>',`#include <color_fragment>
-            float grain=texture2D(natureNoise,vNatureWorld.xz/72.).r;
-            float soil=texture2D(natureNoise,vNatureWorld.xz/310.+.17).r;
-            float path=min(abs(sin((vNatureWorld.x+110.*sin(vNatureWorld.z*.001)+55.*sin(vNatureWorld.z*.0023))*.001745169))*572.9578,abs(sin((vNatureWorld.z+170.*sin(vNatureWorld.x*.0008))*.001208305))*827.6057);
-            diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.25,.175,.092),smoothstep(.45,.65,soil)*.7);
-            diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.26,.185,.10),(1.-smoothstep(2.1,5.2,path))*vNatureRural);
-            vec4 road=texture2D(surfaceMap,vSurfaceUV);float surfaceMask=smoothstep(.01,.12,road.a);vec3 wetRoad=mix(road.rgb,vec3(.055,.075,.085),surfaceWetness*.74);diffuseColor.rgb=mix(diffuseColor.rgb,wetRoad,surfaceMask);
-            diffuseColor.rgb*=mix(.86,1.15,grain);
-            for(int k=0;k<8;k++){vec4 sc=scorches[k];float scar=(1.-smoothstep(sc.z*.25,max(.01,sc.z),distance(vNatureWorld.xz,sc.xy)))*sc.w;diffuseColor.rgb*=1.-scar*.78;}
-            diffuseColor.a=1.;`);
+    // Deliberately use the stock lit/map path for terrain. The local CanvasTexture is fully opaque,
+    // so no custom surface sampler can turn the world black when a driver rejects a shader variant.
+    const mat=makeEfficientMaterial({color:0xffffff,map:groundBaseTex,vertexColors:false,roughness:.97,metalness:0,envMapIntensity:.22,side:THREE.DoubleSide,transparent:false,opacity:1,depthWrite:true,depthTest:true,fog:true});
+    mat.onBeforeCompile=function(s){
+        s.vertexShader=s.vertexShader.replace('#include <common>','#include <common>\nvarying float vTerrainElevation;').replace('#include <begin_vertex>','#include <begin_vertex>\nvTerrainElevation=(modelMatrix*vec4(transformed,1.)).y;');
+        // Match normal scene fog at street level; high terrain has thinner air and retains more range.
+        s.fragmentShader=s.fragmentShader.replace('#include <common>','#include <common>\nvarying float vTerrainElevation;').replace('#include <fog_fragment>',`#ifdef USE_FOG
+            #ifdef FOG_EXP2
+                float fogFactor=1.0-exp(-fogDensity*fogDensity*vFogDepth*vFogDepth);
+            #else
+                float fogFactor=smoothstep(fogNear,fogFar,vFogDepth);
+            #endif
+            fogFactor*=1.0-smoothstep(220.,1450.,vTerrainElevation)*.62;
+            gl_FragColor.rgb=mix(gl_FragColor.rgb,fogColor,fogFactor);
+        #endif`);
     };
-    mat.customProgramCacheKey=()=> 'solid-ground-v4';worldNature.material=mat;
+    mat.customProgramCacheKey=()=> 'solid-ground-stock-map-fog-v5';worldNature.material=mat;
     const indices=[],edges=[[],[],[],[]];for(let z=0;z<16;z++)for(let x=0;x<16;x++){const a=z*17+x;indices.push(a,a+17,a+1,a+1,a+17,a+18);}for(let i=0;i<=16;i++){edges[0].push(i);edges[1].push(i*17+16);edges[2].push(288-i);edges[3].push((16-i)*17);}for(let e=0;e<4;e++)for(let i=0;i<16;i++){const a=edges[e][i],b=edges[e][i+1],lo=289+e*17+i;indices.push(a,b,lo,b,lo+1,lo);}worldNature.edges=edges;worldNature.index=new THREE.Uint16BufferAttribute(indices,1);
 }
 function allocateNatureTile(){
     const g=new THREE.BufferGeometry();g.setIndex(worldNature.index);for(const name of ['position','normal','color'])g.setAttribute(name,new THREE.BufferAttribute(new Float32Array(357*3),3).setUsage(THREE.DynamicDrawUsage));g.setAttribute('natureRural',new THREE.BufferAttribute(new Float32Array(357),1).setUsage(THREE.DynamicDrawUsage));
     const uv=new Float32Array(357*2);for(let z=0;z<=16;z++)for(let x=0;x<=16;x++){const i=z*17+x;uv[i*2]=x/16;uv[i*2+1]=1-z/16;}for(let e=0;e<4;e++)for(let j=0;j<=16;j++){const src=worldNature.edges[e][j],dst=289+e*17+j;uv[dst*2]=uv[src*2];uv[dst*2+1]=uv[src*2+1];}g.setAttribute('surfaceUV',new THREE.BufferAttribute(uv,2));g.setAttribute('uv',new THREE.BufferAttribute(uv.slice(),2));
     const canvas=document.createElement('canvas');canvas.width=canvas.height=128;const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;tex.anisotropy=Math.min(2,MAX_ANISO);tex.minFilter=THREE.LinearMipmapLinearFilter;
-    const mat=worldNature.material.clone();mat.userData.surfaceTexture=tex;mat.onBeforeCompile=worldNature.material.onBeforeCompile;mat.customProgramCacheKey=worldNature.material.customProgramCacheKey;
+    const mat=worldNature.material.clone();mat.map=tex;mat.fog=true;mat.onBeforeCompile=worldNature.material.onBeforeCompile;mat.customProgramCacheKey=worldNature.material.customProgramCacheKey;mat.needsUpdate=true;
     const mesh=new THREE.Mesh(g,mat);mesh.name='Opaque terrain tile';mesh.visible=false;mesh.receiveShadow=true;mesh.matrixAutoUpdate=false;scene.add(mesh);const tile={mesh,canvas,surfaceTexture:tex,heights:new Float64Array(19*19),row:0};worldNature.tiles.push(tile);return tile;
 }
 function createFarm(x,z){farmCenters.push({x,z});createBarn(x,z);registerSurfacePatch(x,z+60,70,90,'dirt');createFenceSquare(x,z+60,90);}
@@ -978,8 +980,9 @@ function createWeatherController(){
         skyUniforms.turbidity.value=THREE.MathUtils.lerp(2.5,state.turbidity,Math.max(state.cover*.65,state.rain));
         skyUniforms.mieCoefficient.value=THREE.MathUtils.lerp(.002,.007,state.cover);
         skyUniforms.mieDirectionalG.value=THREE.MathUtils.lerp(.78,.88,state.cover);
-        scene.fog.far=Math.max(420,CFG.renderDistance*state.fog);
-        scene.fog.near=Math.max(80,scene.fog.far*.19);
+        const flightVisibility=mode==='jet'?1.68:mode==='helicopter'?1.28:1;
+        scene.fog.far=Math.max(560,CFG.renderDistance*state.fog*flightVisibility);
+        scene.fog.near=Math.max(110,scene.fog.far*(mode==='jet'?.12:.19));
         scene.fog.color.setHSL(.56,THREE.MathUtils.lerp(.24,.12,state.rain),THREE.MathUtils.lerp(.70,.38,state.rain)*(0.45+.55*light));
         const cloudPattern=.58+.42*(.5+.5*Math.sin(cam.x*.00053+cam.z*.00031+now*.12)*Math.sin(cam.z*.00047-now*.08));
         const cloudBlock=state.rain>.02?THREE.MathUtils.clamp((.42+state.rain*.53)*cloudPattern,0, .94):state.cover*.26*cloudPattern;
@@ -4360,7 +4363,7 @@ function createRealismFramework(host){
           vec4 w=modelMatrix*instanceMatrix*vec4(position,1.0); vW=w.xyz;
           gl_Position=projectionMatrix*viewMatrix*w; }`;
 
-    const smokeMat = new T.ShaderMaterial({ transparent:true, depthWrite:false, side:T.DoubleSide,
+    const smokeMat = new T.ShaderMaterial({ transparent:true, depthWrite:false, depthTest:false, side:T.DoubleSide,
         uniforms:{ sunDir:{value:_sun}, sunCol:{value:new T.Color(1,0.96,0.86)}, fogCol:{value:new T.Color(0.74,0.82,0.88)}, fogFar:{value:9000} },
         vertexShader: INST_VERT,
         fragmentShader: `varying vec3 vL; varying vec3 vW; varying vec3 vC; varying float vA; varying float vSeed;
@@ -4406,7 +4409,7 @@ function createRealismFramework(host){
             float body=1.0-smoothstep(.18,1.06,r);
             float n=rfFbm(vL*2.6+vec3(vSeed*2.3,vSeed*4.1,vSeed*1.7));
             float hot=body*(0.72+0.28*n);
-            vec3 col=mix(vC,vec3(1.0,0.95,0.82),body*0.85)*(0.85+0.6*n);
+            vec3 col=mix(vC,vec3(1.0,.30,.045),body*.42)*(0.85+.6*n);
             float a=hot*vA; if(a<0.006) discard;
             gl_FragColor=vec4(col*(0.6+a*1.6),a);
             #include <tonemapping_fragment>
@@ -4414,7 +4417,7 @@ function createRealismFramework(host){
 
     // Vertical cylindrical shock front (the 30-ft ground blast wave).
     const wallGeo = new T.CylinderGeometry(1,1,1,56,1,true);
-    const wallMat = new T.ShaderMaterial({ transparent:true, depthWrite:false, blending:T.AdditiveBlending, side:T.DoubleSide,
+    const wallMat = new T.ShaderMaterial({ transparent:true, depthWrite:false, depthTest:false, blending:T.AdditiveBlending, side:T.DoubleSide,
         uniforms:{ fogFar:{value:9000}, fogCol:{value:new T.Color(0.85,0.82,0.74)} },
         vertexShader:`attribute float iAlpha; attribute float iSeed; varying float vH; varying float vAng;
             varying float vA; varying float vSeed; varying vec3 vW;
@@ -4425,12 +4428,13 @@ function createRealismFramework(host){
             uniform float fogFar; uniform vec3 fogCol;
             ${GLSL_NOISE}
             void main(){ float n=rfFbm(vec3(cos(vAng)*2.0+vSeed, vH*3.0, sin(vAng)*2.0));
-              float broken=smoothstep(0.25,0.85,n);
-              float rim=pow(smoothstep(0.0,0.5,vH),1.4);
+              float broken=smoothstep(.18,.72,n);
+              float rim=pow(smoothstep(.03,.22,vH)*(1.-smoothstep(.78,1.,vH)),.72);
+              float leading=smoothstep(.64,.90,n);
               float d=distance(cameraPosition,vW); float fog=smoothstep(fogFar*0.6,fogFar,d);
-              float a=broken*rim*vA*(1.0-fog*0.9); if(a<0.006) discard;
-              vec3 col=mix(vec3(1.0,0.96,0.82),fogCol,fog);
-              gl_FragColor=vec4(col*(0.5+1.5*a),a);
+              float a=(broken*.38+leading*.92)*rim*vA*(1.0-fog*.72);if(a<.004)discard;
+              vec3 col=mix(vec3(1.,.34,.06),fogCol,fog*.55);
+              gl_FragColor=vec4(col*(.75+2.4*leading),min(.96,a));
               #include <tonemapping_fragment>
             #include <colorspace_fragment> }` });
 
@@ -4452,10 +4456,10 @@ function createRealismFramework(host){
         return { cap, mesh, st, col, alp, seed, alloc, writeColor };
     }
     const puffGeo = new T.IcosahedronGeometry(1, host.lowEnd?1:2);
-    const smoke = makePool(CAP_SMOKE, puffGeo, smokeMat); smoke.mesh.renderOrder = 6;
-    const fire  = makePool(CAP_FIRE,  new T.IcosahedronGeometry(1,1), fireMat); fire.mesh.renderOrder = 5;
-    const fballs = makePool(CAP_FBALL, new T.IcosahedronGeometry(1,2), fballMat); fballs.mesh.renderOrder = 5;
-    const walls = makePool(CAP_WALL, wallGeo, wallMat); walls.mesh.renderOrder = 5;
+    const smoke = makePool(CAP_SMOKE, puffGeo, smokeMat); smoke.mesh.renderOrder = 12;
+    const fire  = makePool(CAP_FIRE,  new T.IcosahedronGeometry(1,1), fireMat); fire.mesh.renderOrder = 13;
+    const fballs = makePool(CAP_FBALL, new T.IcosahedronGeometry(1,2), fballMat); fballs.mesh.renderOrder = 14;
+    const walls = makePool(CAP_WALL, wallGeo, wallMat); walls.mesh.renderOrder = 15;
 
     // ── Brilliant detonation flare: camera-facing glare disc with light rays ──
     const flareGeo = new T.PlaneGeometry(1,1);
@@ -4509,7 +4513,7 @@ function createRealismFramework(host){
     }
 
     // ── Low racing ground fog: flat dark dust sheets that hug the terrain ─────
-    const gfog = makePool(CAP_GFOG, puffGeo.clone(), smokeMat); gfog.mesh.renderOrder = 7;
+    const gfog = makePool(CAP_GFOG, puffGeo.clone(), smokeMat); gfog.mesh.renderOrder = 11;
     function spawnGroundFog(o){
         const i=gfog.alloc(), p=gfog.st[i];
         p.alive=true; p.x=o.x;p.y=o.y;p.z=o.z; p.vx=o.vx||0;p.vz=o.vz||0;
@@ -4636,7 +4640,7 @@ function createRealismFramework(host){
         p.alive=true; p.x=o.x;p.y=o.y;p.z=o.z; p.vx=o.vx||0;p.vy=o.vy||0;p.vz=o.vz||0;
         p.r=o.r||4; p.maxR=o.maxR||p.r*6; p.vr=o.vr||6; p.age=0; p.life=o.life||14;
         p.alpha=o.alpha==null?.8:o.alpha; p.hot=o.hot==null?.5:o.hot; p.buoy=o.buoy==null?1:o.buoy;
-        p.axis=o.axis?{x:o.axis.x,z:o.axis.z,pull:o.axisPull==null?.25:o.axisPull}:null;
+        p.axis=o.axis?{x:o.axis.x,z:o.axis.z,pull:o.axisPull==null?.25:o.axisPull}:null;p.coolStart=o.coolStart==null?.7:o.coolStart;p.groundLock=!!o.groundLock;p.groundOffset=o.groundOffset==null?Math.max(.35,p.y-host.getTerrainHeight(p.x,p.z)):o.groundOffset;
         p.col0=new T.Color(o.hotColor||0x241d18); p.col1=new T.Color(o.col||0x6c6a6d); p.seed=Math.random()*40;
         smoke.seed.setX(i,p.seed); smoke.writeColor(i,o.hotColor||0x241d18);
         return p;
@@ -4665,7 +4669,7 @@ function createRealismFramework(host){
         walls.seed.setX(i,p.seed); walls.mesh.setMatrixAt(i,HIDDEN); return p;
     }
     function setPuffMatrix(pool,i,p,r){
-        _p.set(p.x,p.y,p.z); _q.identity(); _s.setScalar(r); _m4.compose(_p,_q,_s); pool.mesh.setMatrixAt(i,_m4);
+        _p.set(p.x,p.y,p.z);_q.identity();_s.set(r,p.groundLock?r*.20:r,r);_m4.compose(_p,_q,_s);pool.mesh.setMatrixAt(i,_m4);
     }
     function updatePools(dt, windX, windZ){
         // smoke — buoyant expansion, Taylor entrainment, axial pull into the stem
@@ -4677,11 +4681,11 @@ function createRealismFramework(host){
             p.r=Math.min(p.maxR, p.r+entrain*dt);
             if(p.axis){ p.vx+=(p.axis.x-p.x)*p.axis.pull*dt; p.vz+=(p.axis.z-p.z)*p.axis.pull*dt; }
             p.vx+=(windX-p.vx)*Math.min(1,.10*dt); p.vz+=(windZ-p.vz)*Math.min(1,.10*dt);
-            p.x+=p.vx*dt; p.y+=p.vy*dt; p.z+=p.vz*dt;
-            const ta=p.age/p.life, appear=T.MathUtils.smoothstep(ta,.0,.10);
+            p.x+=p.vx*dt;p.z+=p.vz*dt;if(p.groundLock){p.y=host.getTerrainHeight(p.x,p.z)+p.groundOffset;p.vy=0;}else p.y+=p.vy*dt;
+            const ta=p.age/p.life,appear=T.MathUtils.smoothstep(ta,.0,.10);
             const fade=ta>.62?Math.max(0,1-(ta-.62)/.38):1;
             smoke.alp.setX(i,p.alpha*appear*fade);
-            const c=_tmpC.copy(p.col0).lerp(p.col1, Math.min(1,ta*1.15)); smoke.col.setXYZ(i,c.r,c.g,c.b);
+            const cool=T.MathUtils.smoothstep(p.age,p.coolStart,p.coolStart+.85),c=_tmpC.copy(p.col0).lerp(p.col1,cool);smoke.col.setXYZ(i,c.r,c.g,c.b);
             setPuffMatrix(smoke,i,p,p.r);
         }
         // fire — fast hot core; when it expires it births a soot puff so fires
@@ -4704,10 +4708,10 @@ function createRealismFramework(host){
             const r=p.r0+(p.rMax-p.r0)*grow;
             // Ground-contact fireballs stay anchored to the earth while hot, then lift.
             if(p.grounded && p.age<p.contact*p.life){ const floorY=p.groundY+r*.7; if(p.y<floorY)p.y=floorY; }
-            const cool=p.age/p.life, fade=cool>.55?Math.max(0,1-(cool-.55)/.45):1;
-            fballs.alp.setX(i, fade*(.55+.45*grow));
-            const c=_tmpC.set(p.colHex).lerp(_tmpC2.set(0x5a1e08), Math.min(.8,cool*.9)); fballs.col.setXYZ(i,c.r,c.g,c.b);
-            _p.set(p.x,p.y,p.z); _q.identity(); _s.setScalar(r*(1-.08*cool)); _m4.compose(_p,_q,_s); fballs.mesh.setMatrixAt(i,_m4);
+            const lifeT=p.age/p.life,fade=lifeT>.55?Math.max(0,1-(lifeT-.55)/.45):1;
+            fballs.alp.setX(i,fade*(.55+.45*grow));
+            const cool=T.MathUtils.smoothstep(p.age,.7,1.45),c=_tmpC.set(p.colHex).lerp(_tmpC2.set(0x242424),cool);fballs.col.setXYZ(i,c.r,c.g,c.b);
+            _p.set(p.x,p.y,p.z);_q.identity();_s.setScalar(r*(1-.08*lifeT)); _m4.compose(_p,_q,_s); fballs.mesh.setMatrixAt(i,_m4);
         }
         for(let i=0;i<CAP_WALL;i++){ const p=walls.st[i]; if(!p.alive) continue; p.age+=dt;
             if(p.age<0){ continue; } if(p.age>=p.life){ p.alive=false; walls.mesh.setMatrixAt(i,HIDDEN); walls.alp.setX(i,0); continue; }
@@ -4741,23 +4745,23 @@ function createRealismFramework(host){
         else if(moab) spawnFlare({x:pos.x,y:gy+R*.2,z:pos.z,s0:R*.25,s1:R*2.6,life:2.0,color:0xffd2a0});
         else if(big) spawnFlare({x:pos.x,y:gy+R*.18,z:pos.z,s0:R*.18,s1:R*1.3,life:1.15,color:0xffe9c8});
         // Brief white-hot flash bubble.
-        spawnFireball({ x:pos.x,y:gy+R*.12,z:pos.z, r0:R*.04, rMax:R*(nuke?.55:big?.4:.3), grow:.22, life:nuke?.6:.4, color:0xffffff, groundY:gy, grounded:true, contact:.9 });
+        spawnFireball({ x:pos.x,y:gy+R*.12,z:pos.z, r0:R*.04,rMax:R*(nuke?.55:big?.4:.3),grow:.22,life:nuke?.6:.4,color:0xff6622, groundY:gy, grounded:true, contact:.9 });
         if(big){
             // Massive incendiary fireball that REMAINS IN CONTACT WITH THE GROUND
             // while it grows, then lifts into the stem as it cools.
             ev.fball = spawnFireball({ x:pos.x,y:gy+R*.1,z:pos.z, r0:R*.08, rMax:R*(nuke?.5:moab?.42:.26),
-                grow:nuke?1.0:.75, life:nuke?4.6:moab?3.6:2.4, color:nuke?0xffe0a8:moab?0xffa040:0xff8a30,
+                grow:nuke?1.0:.75,life:nuke?4.6:moab?3.6:2.4,color:nuke?0xff7422:moab?0xf04a16:0xd62d12,
                 vy:R*(nuke?.11:moab?.07:.06), groundY:gy, grounded:true, contact:nuke?.62:moab?.55:.4 });
             if(nuke){ // secondary hot lobe climbing just above the main fireball
                 spawnFireball({ x:pos.x,y:gy+R*.34,z:pos.z, r0:R*.06, rMax:R*.3, grow:.85, life:2.6, delay:.8, color:0xffc878, vy:R*.16, groundY:gy, grounded:false });
             }
         }
         // ── 30-ft ground blast wave (scaled for smaller warheads) ──
-        const wallH = nuke?9.2:moab?9.2:Math.max(2.2,R*.055);
+        const wallH=nuke?11.5:moab?10.5:Math.max(3.4,R*.075);
         const wallCount = nuke?3:moab?2:big?2:1;
         for(let w=0;w<wallCount;w++){
             spawnWall({ x:pos.x,z:pos.z,groundY:gy+.2, r0:R*.06, r1:R*(1.55+w*.45),
-                height:wallH*(1-w*.18), k:nuke?1.15:1.7, life:2.6+w*.5, alpha:.55-w*.12, delay:w*(nuke?.5:.32) });
+                height:wallH*(1-w*.14),k:nuke?1.28:2.05,life:2.15+w*.42,alpha:.82-w*.14,delay:w*(nuke?.42:.26) });
         }
         // Initial incendiary core: fire puffs expand OUTWARD from centre (not
         // randomly painted): concentric shells give a true incendiary fireball.
@@ -4769,15 +4773,15 @@ function createRealismFramework(host){
                 spawnFire({ x:pos.x+Math.cos(a)*rr2, y:gy+R*.08+Math.random()*R*.16, z:pos.z+Math.sin(a)*rr2,
                     vx:Math.cos(a)*R*(.32+sh*.55), vz:Math.sin(a)*R*(.32+sh*.55), vy:R*.24+Math.random()*R*.16,
                     r:R*(.032+Math.random()*.034)*sc+1.4, maxR:R*.19*sc+8, vr:R*.62, life:.8+Math.random()*1.0,
-                    color:[0xffffee,0xffc050,0xff8426,0xff5a18][sh%4], chain:true }); }
+                    color:[0xff7624,0xe33112,0xff5318,0x98120c][sh%4],chain:true }); }
         }
         // Dense ground-dust + soot shell hugging the terrain, kicked out fast.
         const dustN = Math.round((nuke?175:big?96:42)*tierMul);
         for(let i=0;i<dustN;i++){ const a=Math.random()*6.283, rr=Math.random()*R*.55;
-            spawnSmoke({ x:pos.x+Math.cos(a)*rr, y:gy+1.5+Math.random()*4, z:pos.z+Math.sin(a)*rr,
-                vx:Math.cos(a)*R*(.4+Math.random()*.55), vz:Math.sin(a)*R*(.4+Math.random()*.55), vy:3+Math.random()*7,
-                r:R*.036*sc+1.8, maxR:R*(.30+Math.random()*.16), vr:R*.34, life:(nuke?24:big?17:10)*(.7+Math.random()*.6),
-                alpha:.62+Math.random()*.3, hot:.3, buoy:.5, hotColor:0x4a4038, col:0x8d8478 }); }
+            const groundBound=i%3!==0;spawnSmoke({x:pos.x+Math.cos(a)*rr,y:gy+1.5+Math.random()*4,z:pos.z+Math.sin(a)*rr,
+                vx:Math.cos(a)*R*(.4+Math.random()*.55),vz:Math.sin(a)*R*(.4+Math.random()*.55),vy:groundBound?.18+Math.random()*.35:3+Math.random()*7,
+                r:R*.036*sc+1.8,maxR:R*(.30+Math.random()*.16),vr:R*.34,life:(nuke?24:big?17:10)*(.7+Math.random()*.6),
+                alpha:.62+Math.random()*.3,hot:.65,buoy:groundBound?.02:.75,groundLock:groundBound,groundOffset:1.2+Math.random()*3,coolStart:.7,hotColor:0xc84216,col:0x262728}); }
         // Low dirt/smoke ground fog that races outward across the blast radius.
         if(big){
             const fogN=Math.round((nuke?70:moab?52:28)*tierMul);
@@ -4793,12 +4797,12 @@ function createRealismFramework(host){
         const smokeN = Math.round((nuke?165:big?96:40)*tierMul);
         for(let i=0;i<smokeN;i++){ const a=Math.random()*6.283, rr=Math.pow(Math.random(),1.4)*R*.5;
             const up=Math.random();
-            spawnSmoke({ x:pos.x+Math.cos(a)*rr, y:gy+up*R*.4+2, z:pos.z+Math.sin(a)*rr,
-                vx:Math.cos(a)*R*.16, vz:Math.sin(a)*R*.16, vy:R*.1+Math.random()*R*.12,
-                r:R*.034*sc+1.5, maxR:R*(nuke?.46:moab?.40:.32)+3, vr:R*.24,
-                life:(nuke?32:moab?26:big?19:12)*(.65+Math.random()*.7), alpha:nuke?.9:.86,
-                hot:.95, buoy:1.25, axis:big?{x:pos.x,z:pos.z}:null, axisPull:.14,
-                hotColor:big?0x1c1714:0x2b2723, col:nuke?0x686664:0x5f5b56 }); }
+            const groundBound=i%4===0;spawnSmoke({x:pos.x+Math.cos(a)*rr,y:gy+up*R*.4+2,z:pos.z+Math.sin(a)*rr,
+                vx:Math.cos(a)*R*.16,vz:Math.sin(a)*R*.16,vy:groundBound?.15:R*.1+Math.random()*R*.12,
+                r:R*.034*sc+1.5,maxR:R*(nuke?.46:moab?.40:.32)+3,vr:R*.24,
+                life:(nuke?32:moab?26:big?19:12)*(.65+Math.random()*.7),alpha:nuke?.9:.86,
+                hot:.95,buoy:groundBound?.02:1.25,groundLock:groundBound,groundOffset:1.2+Math.random()*3,axis:groundBound?null:(big?{x:pos.x,z:pos.z}:null),axisPull:.14,coolStart:.7,
+                hotColor:big?0xe24b18:0xd84a1d,col:nuke?0x292a2b:0x242526}); }
         // Ground fracture: stone/dirt chunks thrown by the overpressure.
         const groundChunks = Math.round((nuke?180:moab?120:big?60:R>=30?22:8)*tierMul);
         fracture(pos, pos, groundChunks, ['stone','dirt'], Math.min(52,R*.16), R>200?2.2:1.2);
@@ -7009,7 +7013,7 @@ function runBrowserVisualRegression(){
     const result={shaderCompile:false,terrain:false,textures:false,clouds:false,map:false,explosion:false,errors:[]};
     try{renderer.compile(scene,camera);result.shaderCompile=true;}catch(e){result.errors.push('shader: '+e.message);}
     result.terrain=worldNature.active.size>0&&worldNature.tiles.every(t=>!t.mesh.material.transparent&&t.mesh.material.depthWrite);
-    result.textures=!!(groundBaseTex&&houseSidingTex&&roofShingleTex&&buildingMats.house.map===houseSidingTex&&buildingMats.roof.map===roofShingleTex)&&[...worldNature.active.values()].every(t=>t.mesh.material.map===groundBaseTex&&t.mesh.geometry.getAttribute('uv')&&t.surfaceTexture);
+    result.textures=!!(groundBaseTex&&houseSidingTex&&roofShingleTex&&buildingMats.house.map===houseSidingTex&&buildingMats.roof.map===roofShingleTex)&&[...worldNature.active.values()].every(t=>t.mesh.material.map===t.surfaceTexture&&t.mesh.geometry.getAttribute('uv')&&t.surfaceTexture);
     result.clouds=!!(worldNature.cloudMaterial&&worldNature.clouds[0]&&worldNature.clouds[0].visible&&worldNature.cirrusMesh?.visible);
     result.map=TOPO_RANGE===CFG.worldSize*.5&&fullWorldMapZoom()>0;
     try{const before=realismFX?realismFX.stats().smoke:0,p=camera.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0,0,-180));createExplosion(p,'rocket');updatePooledEffects(.1);if(realismFX)realismFX.update(.1);result.explosion=(realismFX?realismFX.stats().smoke:0)>before;}catch(e){result.errors.push('explosion: '+e.message);}
