@@ -103,6 +103,17 @@ body{overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:#1a2
 .legend-item{display:flex;align-items:center;margin:3px 0;font-size:11px}
 .dot{width:9px;height:9px;margin-right:7px;border-radius:2px}
 #map-hint{position:absolute;bottom:16px;left:16px;color:#7a92a4;background:rgba(8,18,28,.85);padding:8px 12px;border-radius:8px;border:1px solid #1a3a4a;font-size:11px;letter-spacing:.5px;font-family:'Segoe UI',monospace}
+
+#webcam-overlay{position:absolute;inset:0;display:none;z-index:22;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(170,220,255,.075) 0 1px,transparent 1px 4px),radial-gradient(ellipse at center,transparent 44%,rgba(0,10,20,.54) 100%);mix-blend-mode:screen}
+#webcam-overlay.active{display:block;animation:webcamStatic .22s steps(2,end) infinite}
+#webcam-status{position:absolute;top:76px;left:50%;transform:translateX(-50%);display:none;z-index:24;color:#c9ecff;background:rgba(5,18,29,.82);border:1px solid rgba(110,205,255,.55);border-radius:4px;padding:6px 10px;font:800 10px/1.25 monospace;letter-spacing:1.4px;text-align:center;pointer-events:none;text-shadow:0 0 8px #6ed5ff}
+#webcam-status.active{display:block}.webcam-pixelate{image-rendering:pixelated;filter:contrast(1.15) saturate(.78) brightness(.92)}
+@keyframes webcamStatic{0%{opacity:.48;transform:translateX(-1px)}50%{opacity:.16;transform:translateX(1px)}100%{opacity:.36;transform:translateX(0)}}
+#map-layer-panel,#map-strike-panel{position:absolute;top:62px;background:rgba(7,19,30,.94);border:1px solid rgba(86,171,214,.45);border-radius:10px;padding:10px 12px;color:#c9e7f6;font:11px/1.55 monospace;z-index:27;display:none;box-shadow:0 8px 30px rgba(0,0,0,.45)}
+#map-layer-panel.open,#map-strike-panel.open{display:block}#map-layer-panel{left:16px}#map-strike-panel{right:16px;width:208px}.map-layer-option{display:block;cursor:pointer;white-space:nowrap}.map-layer-option input{vertical-align:middle;accent-color:#67c8ed}.strike-options{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:7px 0}.strike-option{font:700 10px/1 monospace;padding:7px 4px;border:1px solid #35677e;border-radius:5px;background:#122a38;color:#e4f4fb;cursor:pointer}.strike-option.selected{background:#8a622a;border-color:#f0c768;color:#fff}.strike-option:disabled{opacity:.35;cursor:not-allowed}.strike-timer{width:54px;background:#102634;border:1px solid #376579;color:#e6f4fa;border-radius:4px;padding:3px}.map-mode-readout{color:#ffd37c;font-size:10px;margin-top:5px}
+#subtitle-box{position:absolute;left:50%;bottom:16vh;transform:translateX(-50%);max-width:min(80vw,720px);display:none;z-index:18;padding:7px 13px;border-radius:5px;background:rgba(0,0,0,.64);color:#f1f6fb;font:600 15px/1.35 system-ui,sans-serif;text-align:center;text-shadow:0 2px 4px #000;pointer-events:none}.subtitle-box.active{display:block}
+#benchmark-readout{margin-top:8px;min-height:16px;color:#9edcf2;font:11px/1.25 monospace;text-align:center}
+
 #settings-panel{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(4,12,20,.92);display:none;flex-direction:column;justify-content:center;align-items:center;z-index:50;pointer-events:auto;backdrop-filter:blur(12px)}
 #settings-panel.open{display:flex}
 #settings-panel h2{color:#f0d070;margin-bottom:14px;font-size:26px;letter-spacing:1px;font-weight:600}
@@ -169,9 +180,21 @@ body{overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:#1a2
     <span id="map-zoom-label">1.0×</span>
     <button class="map-btn" id="map-zoom-in">+</button>
     <button class="map-btn wide" id="map-reset">RESET</button>
+    <button class="map-btn wide" id="map-layers">LAYERS</button>
+    <button class="map-btn wide" id="map-webcam">\ WEBCAM</button>
+    <button class="map-btn wide" id="map-strike">− STRIKE</button>
     <button class="map-btn wide" id="map-lock">🔒 LOCKED</button>
   </div>
-  <div id="map-hint">DRAG to pan · +/− to zoom · Click to teleport when unlocked</div>
+  <div id="map-hint">DRAG to pan · Click to teleport · \ place webcam · − schedule strike · = view webcam</div>
+  <div id="map-layer-panel">
+    <strong>MAP LAYERS</strong>
+    <label class="map-layer-option"><input type="checkbox" data-map-layer="objectives" checked> Objectives / strikes</label>
+    <label class="map-layer-option"><input type="checkbox" data-map-layer="threats" checked> Threats</label>
+    <label class="map-layer-option"><input type="checkbox" data-map-layer="vehicles" checked> Vehicles</label>
+    <label class="map-layer-option"><input type="checkbox" data-map-layer="stores" checked> Stores / pickups</label>
+    <label class="map-layer-option"><input type="checkbox" data-map-layer="teleport" checked> Teleport / webcam</label>
+  </div>
+  <div id="map-strike-panel"><strong>REMOTE STRIKE</strong><div class="map-mode-readout">Choose owned ordnance, set delay, then click map.</div><div class="strike-options" id="strike-options"></div><label>Timer <input class="strike-timer" id="strike-timer" type="number" min="0" max="300" step="1" value="8"> sec</label></div>
   <div id="map-legend">
     <div class="legend-item"><div class="dot" style="background:#8ab0c8"></div>Downtown tower</div>
     <div class="legend-item"><div class="dot" style="background:#d8c8a8"></div>Suburb house</div>
@@ -184,6 +207,7 @@ body{overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:#1a2
     <div class="legend-item"><div class="dot" style="background:#f0b060"></div>Pickup</div>
   </div>
 </div>
+<div id="webcam-overlay"></div><div id="webcam-status">REMOTE WEBCAM · 2 FPS<br>ARROWS · PAN / TILT</div><div id="subtitle-box"></div>
 <div id="ui-layer">
 <div id="crosshair"></div>
 <div id="heli-ring"></div>
@@ -207,7 +231,7 @@ body{overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:#1a2
 <div id="flight-hud"><strong id="flight-values"></strong><small>W/S throttle · A/D bank / taxi<br>Space nose up · Shift nose down · X boost<br>Takeoff: full throttle, then Space above 60 m/s.<br>Stall: lower nose, add power. E exit · P parachute</small></div>
 <div id="touch-controls"><div id="touch-look">DRAG TO LOOK</div><div id="touch-move"><span></span><button data-key="KeyW">W</button><span></span><button data-key="KeyA">A</button><button data-key="KeyS">S</button><button data-key="KeyD">D</button></div><div id="touch-actions"><button data-key="Space">UP</button><button data-key="ShiftLeft">DOWN</button><button data-key="KeyE">ENTER</button><button data-key="KeyX">BOOST</button><button data-key="KeyC">2.5x</button><button data-key="KeyF">6x</button><button data-key="KeyP">CHUTE</button><button data-key="KeyB">BOMB</button><button data-key="Fire">FIRE</button></div></div>
 <div id="minimap-container"><canvas id="minimap" width="150" height="150"></canvas></div>
-<div id="controls-hint">WASD · SHIFT sprint/descend · SPACE jump/ascend/car brake · JET: W/S throttle, A/D bank, SPACE/SHIFT pitch · X boost · C 2.5x · F 6x · B bomb · H aircraft-enter · CLICK shoot · SCROLL switch · 1-0 weapons · [ ] Cluster/Thermo · J camera · E enter/exit · T teleport · P parachute · M map · TAB shop · K/O settings · V jetpack · SHIFT+/ ammo cheat</div>
+<div id="controls-hint">WASD · SHIFT sprint/descend · SPACE jump/ascend/car brake · JET: W/S throttle, A/D bank, SPACE/SHIFT pitch · X boost · C 2.5x · F 6x · B bomb · H aircraft-enter · CLICK shoot · SCROLL switch · 1-0 weapons · [ ] Cluster/Thermo · J camera · R photo orbit · E enter/exit · P parachute · M map · \ webcam · = webcam · arrows pan / tilt · − map strike · TAB shop · K/O settings · V jetpack · SHIFT+/ ammo cheat</div>
 <div id="settings-btn" title="Settings (O)">⚙</div>
 <div id="store-btn">$ SHOP</div>
 <div id="shop-panel">
@@ -242,10 +266,14 @@ body{overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:#1a2
 <h2>⚙ SETTINGS</h2>
 <div class="settings-group"><label>Graphics quality (explicit · 4K = locked native res)</label><select id="gfx-select"><option value="battery">Battery Saver</option><option value="low">Performance</option><option value="medium" selected>Balanced</option><option value="high">High</option><option value="ultra">Ultra</option><option value="cinematic">Cinematic</option><option value="rtx">RTX-Style</option><option value="4k">4K Ultra — max sharpness</option></select></div>
 <div class="settings-group"><label>Time of day</label><input type="range" id="time-slider" min="0" max="24" step="0.1" value="14"><span id="time-val">14:00</span></div>
+<div class="settings-group"><label>Light preset</label><select id="time-preset"><option value="custom">Custom</option><option value="dawn">Dawn</option><option value="noon">Noon</option><option value="golden">Golden hour</option><option value="night">Night</option></select></div>
+<div class="settings-group"><label>Weather</label><select id="weather-select"><option value="clear">Clear</option><option value="cloudy">Cloudy</option><option value="rain">Rain</option><option value="storm">Storm</option></select></div>
+<div class="settings-group"><label>Master audio</label><input type="range" id="audio-volume" min="0" max="100" value="70"><span id="audio-val">70%</span></div>
+<div class="settings-group"><label>Subtitles</label><input type="checkbox" id="subtitles-toggle" checked></div>
 <div class="settings-group"><label>Difficulty</label><select id="diff-select"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select></div>
 <div class="settings-group"><label>Speed</label><input type="range" id="speed-slider" min="200" max="700" value="420"><span id="speed-val">420</span></div>
-<div class="settings-group"><label>NPCs</label><input type="range" id="enemy-slider" min="30" max="900" value="320"><span id="enemy-val">320</span></div>
-<div style="margin-top:14px;"><button class="settings-btn primary" id="settings-apply">APPLY</button><button class="settings-btn" id="settings-close">CLOSE</button></div>
+<div class="settings-group"><label>NPCs</label><input type="range" id="enemy-slider" min="30" max="5000" value="3200"><span id="enemy-val">3200</span></div>
+<div style="margin-top:14px;"><button class="settings-btn primary" id="settings-apply">APPLY</button><button class="settings-btn" id="settings-benchmark">RUN BENCHMARK</button><button class="settings-btn" id="settings-close">CLOSE</button></div><div id="benchmark-readout"></div>
 </div>
 <div id="blocker">
 <div id="instructions">
@@ -257,7 +285,7 @@ body{overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:#1a2
 <p><span class="key">H</span> Auto-enter helicopter in ring</p>
 <p><span class="key">1-0</span> Weapons · <span class="key">SCROLL</span> Cycle</p>
 <p><span class="key">E</span> Enter/Exit · <span class="key">J</span> First/Third Person · <span class="key">P</span> Parachute</p>
-<p><span class="key">;</span> Missile POV · <span class="key">M</span> Map (zoom/pan/lock) · <span class="key">TAB</span> Shop · <span class="key">O</span> Settings · <span class="key">T</span> Teleport</p>
+<p><span class="key">;</span> Missile POV · <span class="key">M</span> Map · <span class="key">\</span> map webcam · <span class="key">=</span> view webcam · <span class="key">−</span> remote strike · <span class="key">R</span> cinematic · <span class="key">TAB</span> Shop · <span class="key">O</span> Settings</p>
 <p style="opacity:.5;margin-top:8px;font-size:11px;">The map has zoom and pan. Lock it before zooming to avoid teleporting accidentally.</p>
 </div>
 </div>
@@ -278,10 +306,10 @@ import { Sky } from 'three/addons/objects/Sky.js';
 
 // ─── CONFIG ───
 const CFG = {
-    worldSize:128000, citySize:128000, blockSize:280, roadWidth:32, highwayWidth:76, shoulderWidth:9,
+    worldSize:256000, citySize:256000, blockSize:280, roadWidth:32, highwayWidth:76, shoulderWidth:9,
     downtownRadius:1900, innerUrbanRadius:3150, mixedUrbanRadius:4300, suburbRadius:5600, roadZoneRadius:6000, cityRadius:6100, townRadius:620,
     largeTownRadius:980, smallTownRadius:560,
-    bumpStartRadius:50000, ruralBumpHeight:13, mountainInner:60000, mountainOuter:82000,
+    bumpStartRadius:100000, ruralBumpHeight:13, mountainInner:112000, mountainOuter:142000,
     cityCount:9, largeTownCount:18, smallTownCount:42, townCount:60, farmCount:96, npcCount:980, enemyCount:280, copCount:120, carCount:180, helicopterCount:24,
     pickupCount:48, heartCount:22, ammoPackCount:88, portalCount:0, renderDistance:10500, fogNear:1650, shadowMapSize:1024,
     maxParticles:850, forestClusterCount:42, forestTreesPerCluster:38, batchCell:2600, maxActiveNPCs:110, maxSimDistance:190, farNPCUpdateInterval:20,
@@ -316,19 +344,22 @@ CFG.copCount=VERY_LOW_MEM?30:90;
 CFG.carCount=VERY_LOW_MEM?40:(DECENT_GPU?200:130);CFG.helicopterCount=VERY_LOW_MEM?8:14;
 CFG.farmCount=VERY_LOW_MEM?28:96;
 CFG.largeTownCount=VERY_LOW_MEM?8:18;CFG.smallTownCount=VERY_LOW_MEM?16:42;CFG.townCount=CFG.largeTownCount+CFG.smallTownCount;
-CFG.forestClusterCount=VERY_LOW_MEM?44:(DECENT_GPU?150:96);
-CFG.forestTreesPerCluster=VERY_LOW_MEM?90:(DECENT_GPU?540:300);
+// Forest regions now cover 4.5x the area per cluster and occur twice as often.
+// Keep the tree density practical for the instanced chunk renderer while the woodland footprint expands.
+const FOREST_AREA_MULTIPLIER=7.0,FOREST_RADIUS_MULTIPLIER=Math.sqrt(FOREST_AREA_MULTIPLIER);
+CFG.forestClusterCount=VERY_LOW_MEM?88:(DECENT_GPU?300:192);
+CFG.forestTreesPerCluster=VERY_LOW_MEM?120:(DECENT_GPU?720:400);
 CFG.maxActiveNPCs=VERY_LOW_MEM?28:(DECENT_GPU?78:52);CFG.maxSimDistance=VERY_LOW_MEM?170:(DECENT_GPU?270:215);
 CFG.maxActiveCars=VERY_LOW_MEM?14:(DECENT_GPU?42:26);CFG.batchCell=VERY_LOW_MEM?1536:2600;
 CFG.detailDistance=0;
 // deviceMemory is capped at 8 by browsers, so cores decide the full-fidelity tier.
 const CITY_CENTERS=(()=>{
-    const out=[],spacing=33000,names=['North','Northeast','East','Southeast','South','Southwest','West','Northwest','Central'];
+    const out=[],spacing=68000,names=['North','Northeast','East','Southeast','South','Southwest','West','Northwest','Central'];
     const spots=[[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,0]];
     for(let i=0;i<spots.length;i++){const [gx,gz]=spots[i];out.push({id:'c'+i,name:names[i]+' City',x:gx*spacing,z:gz*spacing});}
     return out;
 })();
-const TOWN_CENTERS=[],HIGHWAY_PATHS=[],HIGHWAY_EXITS=[],CITY_RECORDS=[];
+const TOWN_CENTERS=[],HIGHWAY_PATHS=[],REGIONAL_ROAD_PATHS=[],HIGHWAY_EXITS=[],CITY_RECORDS=[],farmCenters=[];
 
 const WEAPONS = [
     { name:'Pistol',  damage:35,   reloadTime:0.35, auto:true,  color:0x60d8c0, ammo:9999, recoil:1.0, projectile:false },
@@ -348,12 +379,12 @@ const WEAPONS = [
 const JET_MINIGUN = { name:'Minigun', damage:200, reloadTime:0.5, auto:true, color:0xffaa40, hitscan:true };
 
 const JET_PRESETS = {
-    fighter:     { color: 0x6a7a8a, speed: 370,  shininess: 70,  scale: 1.0 },
-    interceptor: { color: 0x7b5f45, speed: 480,  shininess: 100, scale: 1.0 },
-    bomber:      { color: 0x4a5a3a, speed: 360,  shininess: 30,  scale: 1.55 },
-    stealth:     { color: 0x1a1e24, speed: 540,  shininess: 15,  scale: 1.05 },
-    hypersonic:  { color: 0xd0d8e0, speed: 1350, shininess: 120, scale: 0.75 },
-    airliner:    { color: 0xeef1f4, speed: 300,  shininess: 95,  scale: 1.7 },
+    fighter:     { color: 0x6a7a8a, speed: 340,  shininess: 70,  scale: 1.0 },
+    interceptor: { color: 0x7b5f45, speed: 390,  shininess: 100, scale: 1.0 },
+    bomber:      { color: 0x4a5a3a, speed: 230,  shininess: 30,  scale: 1.55 },
+    stealth:     { color: 0x1a1e24, speed: 300,  shininess: 15,  scale: 1.05 },
+    hypersonic:  { color: 0xd0d8e0, speed: 1200, shininess: 120, scale: 0.75 },
+    airliner:    { color: 0xeef1f4, speed: 250,  shininess: 95,  scale: 1.7 },
 };
 
 const EXPLOSIONS = {
@@ -436,7 +467,7 @@ function terrainHeightAt(x, z){
 }
 
 // Camera-centered clip rings: 16 inner tiles, then six 12-tile rings, 8-512m samples.
-const worldNature={tiles:[],active:new Map(),pending:null,signature:'',center:new THREE.Vector3(),time:{value:0},generationBudgetMs:2.5,maxRowsPerFrame:160,grassBudget:140,grass:null,clouds:[]};
+const worldNature={tiles:[],active:new Map(),pending:null,signature:'',center:new THREE.Vector3(),time:{value:0},wetness:{value:0},night:{value:0},treeSway:{value:0},generationBudgetMs:2.5,maxRowsPerFrame:160,grassBudget:140,grass:null,clouds:[]};
 function getNatureNoise(){
     if(worldNature.noise)return worldNature.noise;
     const n=128,data=new Uint8Array(n*n*4);
@@ -461,20 +492,27 @@ function surfaceIndex(map,item,minX,minZ,maxX,maxZ){
 function surfaceQuery(map,x,z,w,d){const out=new Set(),S=surfaceWorld.cellSize;for(let iz=Math.floor(z/S);iz<=Math.floor((z+d)/S);iz++)for(let ix=Math.floor(x/S);ix<=Math.floor((x+w)/S);ix++){const a=map.get(ix+':'+iz);if(a)for(const item of a)out.add(item);}return out;}
 function registerSurfacePatch(x,z,w,d,kind,rotation=0){const p={x,z,w,d,kind,rotation},r=Math.hypot(w,d)*.5;surfaceWorld.patches.push(p);surfaceIndex(surfaceWorld.patchCells,p,x-r,z-r,x+r,z+r);surfaceWorld.revision++;}
 function createRoadSegment(ax,az,bx,bz,width,mat,shoulder){
-    const len=Math.hypot(bx-ax,bz-az);if(len<1)return;const r=width*.5+6;
-    const seg={ax,az,bx,bz,width,len};surfaceWorld.segments.push(seg);surfaceIndex(surfaceWorld.roadCells,seg,Math.min(ax,bx)-r,Math.min(az,bz)-r,Math.max(ax,bx)+r,Math.max(az,bz)+r);
+    const len=Math.hypot(bx-ax,bz-az);if(len<1)return null;const r=width*.5+6;
+    const seg={ax,az,bx,bz,width,len,trafficDisabled:false};surfaceWorld.segments.push(seg);surfaceIndex(surfaceWorld.roadCells,seg,Math.min(ax,bx)-r,Math.min(az,bz)-r,Math.max(ax,bx)+r,Math.max(az,bz)+r);return seg;
+}
+function roadProjection(seg,x,z){const dx=seg.bx-seg.ax,dz=seg.bz-seg.az,ll=dx*dx+dz*dz||1,t=Math.max(0,Math.min(1,((x-seg.ax)*dx+(z-seg.az)*dz)/ll)),px=seg.ax+dx*t,pz=seg.az+dz*t;return{t,x:px,z:pz,d:Math.hypot(x-px,z-pz)};}
+// Split roads at genuine junctions, so visible regional connections are usable by the traffic graph too.
+function attachRoadJunction(x,z,slop=2){
+    const snapshot=surfaceWorld.segments.slice();
+    for(const seg of snapshot){if(seg.trafficDisabled)continue;const q=roadProjection(seg,x,z);
+        if(q.t>.0008&&q.t<.9992&&q.d<=seg.width*.5+slop){seg.trafficDisabled=true;createRoadSegment(seg.ax,seg.az,q.x,q.z,seg.width);createRoadSegment(q.x,q.z,seg.bx,seg.bz,seg.width);}
+    }
+    return{x,z};
+}
+function addRegionalRoadPath(points,width=24){REGIONAL_ROAD_PATHS.push(points.map(p=>({x:p.x,z:p.z})));createRoadPath(points,width);}
+function nearestMainInterstate(x,z){
+    let best=null;
+    for(const seg of surfaceWorld.segments){if(seg.trafficDisabled||seg.width<CFG.highwayWidth-1)continue;const q=roadProjection(seg,x,z);if(!best||q.d<best.d)best={...q,seg};}
+    return best;
 }
 function createRoadPath(points,width){for(let i=1;i<points.length;i++)createRoadSegment(points[i-1].x,points[i-1].z,points[i].x,points[i].z,width);}
-function roadClearAt(x,z,pad=0){
-    const S=surfaceWorld.cellSize, reach=Math.max(0,pad+45),
-        cx=Math.floor(x/S),cz=Math.floor(z/S), rx=Math.ceil(reach/S),rz=Math.ceil(reach/S);
-    for(let iz=cz-rz;iz<=cz+rz;iz++)for(let ix=cx-rx;ix<=cx+rx;ix++){
-        const near=surfaceWorld.roadCells.get(ix+':'+iz); if(!near)continue;
-        for(const r of near) if(natureSegmentDistance(x,z,r.ax,r.az,r.bx,r.bz)<r.width*.5+pad+3)return false;
-    }
-    return true;
-}
-function naturePointIsClear(x,z,pad=1){return roadClearAt(x,z,pad)&&!pointIsBlocked(x,z,pad);}
+function roadClearAt(x,z,pad=0){const reach=Math.max(1,pad+3),near=surfaceQuery(surfaceWorld.roadCells,x-reach,z-reach,reach*2,reach*2);for(const r of near)if(natureSegmentDistance(x,z,r.ax,r.az,r.bx,r.bz)<r.width*.5+pad+3)return false;return true;}
+function naturePointIsClear(x,z,pad=1){return roadClearAt(x,z,pad+6)&&!pointIsBlocked(x,z,pad);}
 function buildIrregularRoadNetwork(){
     // Grid streets plus diagonal boulevards, two ring roads and varied road
     // widths — every city gets a diverse, connected network.
@@ -490,14 +528,14 @@ function buildIrregularRoadNetwork(){
     }
 }
 function buildHighwayNetwork(){
-    const cross=58000;
+    const cross=116000;
     // Cross-country horizontal + vertical interstates.
     const h=[{x:-cross,z:0},{x:-cross*.55,z:700},{x:0,z:0},{x:cross*.55,z:-700},{x:cross,z:0}];
     const v=[{x:0,z:-cross},{x:-700,z:-cross*.55},{x:0,z:0},{x:700,z:cross*.55},{x:0,z:cross}];
     HIGHWAY_PATHS.push(h,v);createRoadPath(h,CFG.highwayWidth);createRoadPath(v,CFG.highwayWidth);
     // Ring interstate around the eight outer cities, bowed outward between them.
     const order=[[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1]];
-    const ring=order.map(([gx,gz])=>({x:gx*33000,z:gz*33000}));
+    const ring=order.map(([gx,gz])=>({x:gx*68000,z:gz*68000}));
     for(let i=0;i<ring.length;i++){const a=ring[i],b=ring[(i+1)%ring.length],mx=(a.x+b.x)/2,mz=(a.z+b.z)/2,ml=Math.hypot(mx,mz)||1;
         const p=[a,{x:mx+mx/ml*2800,z:mz+mz/ml*2800},b];HIGHWAY_PATHS.push(p);createRoadPath(p,52);}
     // Every city gets a connector from its inward edge toward the network core.
@@ -509,36 +547,56 @@ function buildHighwayNetwork(){
         HIGHWAY_EXITS.push({...edge,city:c.id,id:'exit-'+c.id});}
 }
 function createRoadNetworks(){buildIrregularRoadNetwork();buildHighwayNetwork();}
+function townRoadGateway(t,target){
+    const ext=(t.radius||CFG.townRadius)*.5,dx=target.x-t.x,dz=target.z-t.z;
+    return Math.abs(dx)>=Math.abs(dz)?{x:t.x+(dx<0?-ext:ext),z:t.z+30}:{x:t.x+30,z:t.z+(dz<0?-ext:ext)};
+}
+function settlementRoadGateway(node,target){return node.city?{x:node.x,z:node.z}:townRoadGateway(node,target);}
+function regionalBend(a,b,bend=260){const dx=b.x-a.x,dz=b.z-a.z,l=Math.hypot(dx,dz)||1;return{x:(a.x+b.x)*.5-dz/l*bend,z:(a.z+b.z)*.5+dx/l*bend};}
 function connectTownRoads(){
     for(const t of TOWN_CENTERS){
-        // Kind-scaled cross streets through the town.
+        // Kind-scaled cross streets through the town. The connector gateways land on these roads.
         const ext=(t.radius||CFG.townRadius)*.5;
         createRoadSegment(t.x-ext,t.z+30,t.x+ext,t.z+30,22);
         createRoadSegment(t.x+30,t.z-ext,t.x+30,t.z+ext,22);
         if(t.kind==='large'){createRoadSegment(t.x-ext,t.z-ext*.45,t.x+ext,t.z-ext*.45,18);createRoadSegment(t.x-ext*.45,t.z-ext,t.x-ext*.45,t.z+ext,18);}
     }
-    // Minimum spanning tree joins EVERY town and city into one road network.
+    // Split the city grid/ring at each centre, then give every city an explicit route to the
+    // crossing interstate. This makes the outer ring, city streets and national roads one network.
+    for(const c of CITY_CENTERS){
+        attachRoadJunction(c.x,c.z);
+        const hit=nearestMainInterstate(c.x,c.z);
+        if(hit&&hit.d>36){attachRoadJunction(hit.x,hit.z);const a={x:c.x,z:c.z},b={x:hit.x,z:hit.z};addRegionalRoadPath([a,regionalBend(a,b,720),b],46);}
+    }
+    // A minimum spanning tree joins every town to the already-connected city/interstate backbone.
     const nodes=[...CITY_CENTERS.map(c=>({x:c.x,z:c.z,city:true})),...TOWN_CENTERS];
     const linked=new Array(CITY_CENTERS.length).fill(true).concat(new Array(TOWN_CENTERS.length).fill(false));
     for(;;){
         let bi=-1,bj=-1,bd=Infinity;
-        for(let i=0;i<nodes.length;i++){if(!linked[i])continue;
-            for(let j=0;j<nodes.length;j++){if(linked[j])continue;
-                const d=(nodes[i].x-nodes[j].x)**2+(nodes[i].z-nodes[j].z)**2;if(d<bd){bd=d;bi=i;bj=j;}}}
-        if(bj<0)break;
-        linked[bj]=true;
-        const a=nodes[bj],b=nodes[bi],ext=(a.radius||CFG.townRadius)*.5+60;
-        const dx=b.x-a.x,dz=b.z-a.z,dl=Math.hypot(dx,dz)||1,ux=dx/dl,uz=dz/dl;
-        const start={x:a.x+ux*ext,z:a.z+uz*ext},mid={x:(start.x+b.x)/2+uz*320,z:(start.z+b.z)/2-ux*320};
-        createRoadPath([start,mid,b],a.city||b.city?26:20);
+        for(let i=0;i<nodes.length;i++){if(!linked[i])continue;for(let j=0;j<nodes.length;j++){if(linked[j])continue;
+            const d=(nodes[i].x-nodes[j].x)**2+(nodes[i].z-nodes[j].z)**2;if(d<bd){bd=d;bi=i;bj=j;}}}
+        if(bj<0)break;linked[bj]=true;
+        const a=nodes[bj],b=nodes[bi],start=settlementRoadGateway(a,b),end=settlementRoadGateway(b,a);
+        attachRoadJunction(start.x,start.z);attachRoadJunction(end.x,end.z);
+        addRegionalRoadPath([start,regionalBend(start,end,220),end],a.city||b.city?26:20);
+    }
+    // Farms receive an access road into that same backbone rather than becoming isolated destinations.
+    const hubs=[...CITY_CENTERS.map(c=>({x:c.x,z:c.z,city:true})),...TOWN_CENTERS];
+    for(const farm of farmCenters){let hub=hubs[0],d2=Infinity;for(const candidate of hubs){const d=(candidate.x-farm.x)**2+(candidate.z-farm.z)**2;if(d<d2){d2=d;hub=candidate;}}
+        const start={x:farm.x,z:farm.z+105},end=settlementRoadGateway(hub,start);attachRoadJunction(end.x,end.z);
+        addRegionalRoadPath([start,regionalBend(start,end,150),end],18);
     }
     surfaceWorld.revision++;
 }
 function paintTerrainSurface(tile){
     const N=tile.canvas.width,ctx=tile.canvas.getContext('2d'),scale=N/tile.s,pad=tile.s/N*2;
-    ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,N,N);ctx.setTransform(scale,0,0,scale,-tile.x*scale,-tile.z*scale);
+    ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#5d784b';ctx.fillRect(0,0,N,N);
+    // Bake the same local procedural albedo into every road/lot canvas: never sample transparent black terrain.
+    if(groundBaseTex.image)ctx.drawImage(groundBaseTex.image,0,0,N,N);
+    for(let i=0;i<160;i++){const px=hash2((tile.x/tile.s|0)*193+i,(tile.z/tile.s|0)+41)*N,py=hash2((tile.z/tile.s|0)*271+i,(tile.x/tile.s|0)+73)*N;ctx.fillStyle=i%3?'rgba(112,136,76,.18)':'rgba(72,91,52,.15)';ctx.fillRect(px,py,1+hash2(i,17)*3,1+hash2(i,29)*2);}
+    ctx.setTransform(scale,0,0,scale,-tile.x*scale,-tile.z*scale);
     const patches=surfaceQuery(surfaceWorld.patchCells,tile.x-pad,tile.z-pad,tile.s+pad*2,tile.s+pad*2);
-    const colors={lawn:'#607342',concrete:'#96958a',asphalt:'#3b3e3d',dirt:'#887153'};
+    const wet=typeof weather!=='undefined'?weather.wetness:0,colors={lawn:'#607342',concrete:'#96958a',asphalt:`rgb(${Math.round(59-19*wet)},${Math.round(62-17*wet)},${Math.round(61-14*wet)})`,dirt:'#887153'};
     for(const p of patches){ctx.save();ctx.translate(p.x,p.z);ctx.rotate(-p.rotation);ctx.fillStyle=colors[p.kind]||colors.dirt;ctx.fillRect(-p.w*.5,-p.d*.5,p.w,p.d);ctx.restore();}
     const roads=surfaceQuery(surfaceWorld.roadCells,tile.x-pad,tile.z-pad,tile.s+pad*2,tile.s+pad*2);
     ctx.lineCap='round';ctx.lineJoin='round';ctx.setLineDash([]);
@@ -553,31 +611,33 @@ function createWorldTerrain(){
     if(worldNature.material)return;
     worldNature.grassColor=new THREE.Color(0x718450);worldNature.soilColor=new THREE.Color(0x9a8767);worldNature.rockColor=new THREE.Color(0x7b817c);worldNature.snowColor=new THREE.Color(0xd9dedb);worldNature.color=new THREE.Color();
     worldNature.scorches={value:Array.from({length:8},()=>new THREE.Vector4(0,0,0,0))};
-    const mat=makeEfficientMaterial({vertexColors:true,roughness:.97,metalness:0,envMapIntensity:.22,side:THREE.DoubleSide,transparent:false,opacity:1,depthWrite:true,depthTest:true});
-    mat.onBeforeCompile=function(s){s.uniforms.natureNoise={value:getNatureNoise()};s.uniforms.surfaceMap={value:this.userData.surfaceTexture};s.uniforms.scorches=worldNature.scorches;
-        s.vertexShader=s.vertexShader.replace('#include <common>','#include <common>\nattribute float natureRural;attribute vec2 surfaceUV;varying vec2 vSurfaceUV;varying vec3 vNatureWorld;varying float vNatureRural;').replace('#include <begin_vertex>','#include <begin_vertex>\nvNatureWorld=(modelMatrix*vec4(transformed,1.)).xyz;vSurfaceUV=surfaceUV;vNatureRural=natureRural;');
-        s.fragmentShader=s.fragmentShader.replace('#include <common>','#include <common>\nuniform sampler2D natureNoise;uniform sampler2D surfaceMap;uniform vec4 scorches[8];varying vec2 vSurfaceUV;varying vec3 vNatureWorld;varying float vNatureRural;').replace('#include <color_fragment>',`#include <color_fragment>
-            float grain=texture2D(natureNoise,vNatureWorld.xz/72.).r;
-            float soil=texture2D(natureNoise,vNatureWorld.xz/310.+.17).r;
-            float path=min(abs(sin((vNatureWorld.x+110.*sin(vNatureWorld.z*.001)+55.*sin(vNatureWorld.z*.0023))*.001745169))*572.9578,abs(sin((vNatureWorld.z+170.*sin(vNatureWorld.x*.0008))*.001208305))*827.6057);
-            diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.25,.175,.092),smoothstep(.45,.65,soil)*.7);
-            diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.26,.185,.10),(1.-smoothstep(2.1,5.2,path))*vNatureRural);
-            vec4 road=texture2D(surfaceMap,vSurfaceUV);diffuseColor.rgb=mix(diffuseColor.rgb,road.rgb,road.a);
-            diffuseColor.rgb*=mix(.86,1.15,grain);
-            for(int k=0;k<8;k++){vec4 sc=scorches[k];float scar=(1.-smoothstep(sc.z*.25,max(.01,sc.z),distance(vNatureWorld.xz,sc.xy)))*sc.w;diffuseColor.rgb*=1.-scar*.78;}
-            diffuseColor.a=1.;`);
+    // Deliberately use the stock lit/map path for terrain. The local CanvasTexture is fully opaque,
+    // so no custom surface sampler can turn the world black when a driver rejects a shader variant.
+    const mat=makeEfficientMaterial({color:0xffffff,map:groundBaseTex,vertexColors:false,roughness:.97,metalness:0,envMapIntensity:.22,side:THREE.DoubleSide,transparent:false,opacity:1,depthWrite:true,depthTest:true,fog:true});
+    mat.onBeforeCompile=function(s){
+        s.vertexShader=s.vertexShader.replace('#include <common>','#include <common>\nvarying float vTerrainElevation;').replace('#include <begin_vertex>','#include <begin_vertex>\nvTerrainElevation=(modelMatrix*vec4(transformed,1.)).y;');
+        // Match normal scene fog at street level; high terrain has thinner air and retains more range.
+        s.fragmentShader=s.fragmentShader.replace('#include <common>','#include <common>\nvarying float vTerrainElevation;').replace('#include <fog_fragment>',`#ifdef USE_FOG
+            #ifdef FOG_EXP2
+                float fogFactor=1.0-exp(-fogDensity*fogDensity*vFogDepth*vFogDepth);
+            #else
+                float fogFactor=smoothstep(fogNear,fogFar,vFogDepth);
+            #endif
+            fogFactor*=1.0-smoothstep(220.,1450.,vTerrainElevation)*.62;
+            gl_FragColor.rgb=mix(gl_FragColor.rgb,fogColor,fogFactor);
+        #endif`);
     };
-    mat.customProgramCacheKey=()=> 'solid-ground-v3';worldNature.material=mat;
+    mat.customProgramCacheKey=()=> 'solid-ground-stock-map-fog-v5';worldNature.material=mat;
     const indices=[],edges=[[],[],[],[]];for(let z=0;z<16;z++)for(let x=0;x<16;x++){const a=z*17+x;indices.push(a,a+17,a+1,a+1,a+17,a+18);}for(let i=0;i<=16;i++){edges[0].push(i);edges[1].push(i*17+16);edges[2].push(288-i);edges[3].push((16-i)*17);}for(let e=0;e<4;e++)for(let i=0;i<16;i++){const a=edges[e][i],b=edges[e][i+1],lo=289+e*17+i;indices.push(a,b,lo,b,lo+1,lo);}worldNature.edges=edges;worldNature.index=new THREE.Uint16BufferAttribute(indices,1);
 }
 function allocateNatureTile(){
     const g=new THREE.BufferGeometry();g.setIndex(worldNature.index);for(const name of ['position','normal','color'])g.setAttribute(name,new THREE.BufferAttribute(new Float32Array(357*3),3).setUsage(THREE.DynamicDrawUsage));g.setAttribute('natureRural',new THREE.BufferAttribute(new Float32Array(357),1).setUsage(THREE.DynamicDrawUsage));
-    const uv=new Float32Array(357*2);for(let z=0;z<=16;z++)for(let x=0;x<=16;x++){const i=z*17+x;uv[i*2]=x/16;uv[i*2+1]=1-z/16;}for(let e=0;e<4;e++)for(let j=0;j<=16;j++){const src=worldNature.edges[e][j],dst=289+e*17+j;uv[dst*2]=uv[src*2];uv[dst*2+1]=uv[src*2+1];}g.setAttribute('surfaceUV',new THREE.BufferAttribute(uv,2));
+    const uv=new Float32Array(357*2);for(let z=0;z<=16;z++)for(let x=0;x<=16;x++){const i=z*17+x;uv[i*2]=x/16;uv[i*2+1]=1-z/16;}for(let e=0;e<4;e++)for(let j=0;j<=16;j++){const src=worldNature.edges[e][j],dst=289+e*17+j;uv[dst*2]=uv[src*2];uv[dst*2+1]=uv[src*2+1];}g.setAttribute('surfaceUV',new THREE.BufferAttribute(uv,2));g.setAttribute('uv',new THREE.BufferAttribute(uv.slice(),2));
     const canvas=document.createElement('canvas');canvas.width=canvas.height=128;const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;tex.anisotropy=Math.min(2,MAX_ANISO);tex.minFilter=THREE.LinearMipmapLinearFilter;
-    const mat=worldNature.material.clone();mat.userData.surfaceTexture=tex;mat.onBeforeCompile=worldNature.material.onBeforeCompile;mat.customProgramCacheKey=worldNature.material.customProgramCacheKey;
+    const mat=worldNature.material.clone();mat.map=tex;mat.fog=true;mat.onBeforeCompile=worldNature.material.onBeforeCompile;mat.customProgramCacheKey=worldNature.material.customProgramCacheKey;mat.needsUpdate=true;
     const mesh=new THREE.Mesh(g,mat);mesh.name='Opaque terrain tile';mesh.visible=false;mesh.receiveShadow=true;mesh.matrixAutoUpdate=false;scene.add(mesh);const tile={mesh,canvas,surfaceTexture:tex,heights:new Float64Array(19*19),row:0};worldNature.tiles.push(tile);return tile;
 }
-function createFarm(x,z){createBarn(x,z);registerSurfacePatch(x,z+60,70,90,'dirt');createFenceSquare(x,z+60,90);}
+function createFarm(x,z){farmCenters.push({x,z});createBarn(x,z);registerSurfacePatch(x,z+60,70,90,'dirt');createFenceSquare(x,z+60,90);}
 function createHill(){/* Hills are part of the opaque heightfield, not intersecting sphere overlays. */}
 let scorchIndex=0;const terrainScorchLife=new Float32Array(8),terrainScorchMax=new Float32Array(8);
 function stampTerrainScorch(pos,radius,seconds){if(!worldNature.scorches)return;const i=scorchIndex++%8;worldNature.scorches.value[i].set(pos.x,pos.z,Math.min(radius*.72,1100),1);terrainScorchLife[i]=terrainScorchMax[i]=Math.min(90,Math.max(3,seconds));}
@@ -588,17 +648,18 @@ function createVolumetricClouds(){
     // billboard puffs — a flat dark underside plus stacked cauliflower domes.
     // Puffs wrap on an infinite tiled span around the camera.
     const SPAN=56000; worldNature.cloudSpan=SPAN;
-    const CLOUDS=VERY_LOW_MEM?40:LOW_MEM?80:150;
-    const PUFF_CAP=VERY_LOW_MEM?1100:LOW_MEM?3200:7400;
+    const CLOUDS=VERY_LOW_MEM?18:LOW_MEM?34:56;
+    // Fewer high-detail sprites than before: a separate low deck gives weather coverage cheaply.
+    const PUFF_CAP=VERY_LOW_MEM?900:LOW_MEM?2200:3400;
     const geo=new THREE.PlaneGeometry(2,2);
     const light={value:1},sunTint={value:sun.color.clone()},fogTint={value:scene.fog.color.clone()},fogFar={value:CFG.renderDistance};
     const uniforms={noiseAtlas:{value:getNatureNoise()},natureTime:worldNature.time,light,sunTint,fogTint,fogFar,
-        uInCloud:{value:0},cloudSpan:{value:SPAN},wind:{value:new THREE.Vector2()}};
+        uInCloud:{value:0},cloudCover:{value:1},stormAmount:{value:0},cloudSpan:{value:SPAN},wind:{value:new THREE.Vector2()}};
     worldNature.cloudMaterial={uniforms};
-    const vert=`attribute float iSeed; attribute float iScale; attribute float iDark;
+    const vert=`attribute float iSeed; attribute float iScale; attribute float iDark; attribute float iStorm;
         uniform float cloudSpan; uniform vec2 wind;
-        varying vec2 vUv; varying float vSeed; varying float vDark; varying vec3 vW;
-        void main(){ vUv=position.xy; vSeed=iSeed; vDark=iDark;
+        varying vec2 vUv; varying float vSeed; varying float vDark; varying float vStorm; varying vec3 vW;
+        void main(){ vUv=position.xy; vSeed=iSeed; vDark=iDark; vStorm=iStorm;
             vec4 c=modelMatrix*instanceMatrix*vec4(0.,0.,0.,1.);
             vec3 w=c.xyz;
             vec2 rel=w.xz-cameraPosition.xz+wind;
@@ -608,15 +669,15 @@ function createVolumetricClouds(){
             vec4 vp=viewMatrix*vec4(w,1.);
             vp.xy+=position.xy*iScale;
             gl_Position=projectionMatrix*vp; }`;
-    const frag=`uniform sampler2D noiseAtlas; uniform float light,fogFar,uInCloud; uniform vec3 sunTint,fogTint;
-        varying vec2 vUv; varying float vSeed; varying float vDark; varying vec3 vW;
+    const frag=`uniform sampler2D noiseAtlas; uniform float light,fogFar,uInCloud,cloudCover,stormAmount; uniform vec3 sunTint,fogTint;
+        varying vec2 vUv; varying float vSeed; varying float vDark; varying float vStorm; varying vec3 vW;
         void main(){
             vec2 q=vUv*.5+.5;
             float n1=texture2D(noiseAtlas,fract(q*.9+vec2(vSeed*.131,vSeed*.073))).r;
             float n2=texture2D(noiseAtlas,fract(q*2.7+vec2(vSeed*.311,vSeed*.197)+.37)).r;
             float n3=texture2D(noiseAtlas,fract(q*4.3+vec2(vSeed*.53,vSeed*.41)+.71)).r;
             float erode=(n1-.5)*.62+(n2-.5)*.24;
-            float shape=smoothstep(1.04,0.28,length(vUv)+erode);
+            float shape=1.-smoothstep(.28,1.04,length(vUv)+erode);
             if(shape<.004)discard;
             float top=smoothstep(-.45,.65,vUv.y+(n1-.5)*.3);
             vec3 shadow=mix(vec3(.36,.39,.47),vec3(.58,.62,.7),vDark);
@@ -627,8 +688,8 @@ function createVolumetricClouds(){
             float fogf=smoothstep(fogFar*.42,fogFar,d);
             col=mix(col,fogTint,fogf*.85);
             col=mix(col,mix(vec3(1.),fogTint,.28),uInCloud);
-            float nearFade=smoothstep(2400.,140.,d);
-            float a=shape*(1.-fogf)*mix(1.,.4,nearFade)*(1.+uInCloud*1.6)*(1.-vDark*.28);
+            float nearFade=1.-smoothstep(140.,2400.,d);
+            float weatherCover=mix(cloudCover,stormAmount,vStorm);float a=shape*(1.-fogf)*mix(1.,.4,nearFade)*(1.+uInCloud*1.6)*(1.-vDark*.28)*weatherCover;
             gl_FragColor=vec4(clamp(col,0.,1.25),clamp(a,0.,.96));
             #include <tonemapping_fragment>
             #include <colorspace_fragment> }`;
@@ -637,51 +698,61 @@ function createVolumetricClouds(){
     mesh.frustumCulled=false;mesh.renderOrder=3;
     const seedA=new THREE.InstancedBufferAttribute(new Float32Array(PUFF_CAP),1);
     const scaleA=new THREE.InstancedBufferAttribute(new Float32Array(PUFF_CAP),1);
-    const darkA=new THREE.InstancedBufferAttribute(new Float32Array(PUFF_CAP),1);
-    geo.setAttribute('iSeed',seedA);geo.setAttribute('iScale',scaleA);geo.setAttribute('iDark',darkA);
+    const darkA=new THREE.InstancedBufferAttribute(new Float32Array(PUFF_CAP),1),stormA=new THREE.InstancedBufferAttribute(new Float32Array(PUFF_CAP),1);
+    geo.setAttribute('iSeed',seedA);geo.setAttribute('iScale',scaleA);geo.setAttribute('iDark',darkA);geo.setAttribute('iStorm',stormA);
     const H=new THREE.Matrix4().makeScale(0,0,0);
     for(let i=0;i<PUFF_CAP;i++)mesh.setMatrixAt(i,H);
     scene.add(mesh);
     const dmy=new THREE.Object3D(); let used=0; const centers=[];
-    function puff(x,y,z,s,dark){ if(used>=PUFF_CAP)return;
+    function puff(x,y,z,s,dark,storm=0){ if(used>=PUFF_CAP)return;
         dmy.position.set(x,y,z);dmy.rotation.set(0,0,0);dmy.scale.setScalar(1);dmy.updateMatrix();
         mesh.setMatrixAt(used,dmy.matrix);
-        const sd=Math.random()*40; seedA.setX(used,sd);scaleA.setX(used,s);darkA.setX(used,dark); used++; }
+        const sd=Math.random()*40; seedA.setX(used,sd);scaleA.setX(used,s);darkA.setX(used,dark);stormA.setX(used,storm); used++; }
+    // A tiled low cumuliform deck occupies large patches in rain/storm. It is preallocated,
+    // but entirely transparent until precipitation raises stormAmount.
+    const deckCells=15,deckStep=SPAN/deckCells;
+    for(let gz=-7;gz<=7;gz++)for(let gx=-7;gx<=7;gx++){
+        const cx=gx*deckStep,cz=gz*deckStep,jx=(hash2(gx,gz)-.5)*520,jz=(hash2(gz,gx+91)-.5)*520;
+        const base=360+hash2(gx+19,gz+71)*145;
+        puff(cx+jx,base,cz+jz,1080+hash2(gx,gz+9)*380,1,1);
+        puff(cx-jx*.36,base+105+hash2(gz,gx+5)*130,cz-jz*.36,720+hash2(gx+7,gz)*260,.68,1);
+        if(((gx+gz)&1)===0)puff(cx+jx*.2,base+250,cz+jz*.2,420+hash2(gx+4,gz+3)*190,.28,1);
+    }
     for(let c=0;c<CLOUDS;c++){
         const cx=(Math.random()-.5)*SPAN, cz=(Math.random()-.5)*SPAN;
         const base=650+Math.random()*300, rx=230+Math.random()*480, rz=150+Math.random()*320;
         const top=base+170+Math.random()*300;
         centers.push({x:cx,z:cz,base,top,rx,rz});
         // Flat dark underside: a ragged sheet of wide puffs at cloud base.
-        const nb=10+((Math.random()*14)|0);
+        const nb=5+((Math.random()*6)|0);
         for(let i=0;i<nb;i++){ const a=Math.random()*6.283, rr=Math.sqrt(Math.random());
             puff(cx+Math.cos(a)*rx*rr, base+(Math.random()-.5)*24, cz+Math.sin(a)*rz*rr, 70+Math.random()*95, 1); }
         // Cauliflower domes: stacked shrinking rings of bright puffs.
-        const heaps=4+((Math.random()*4)|0);
+        const heaps=2+((Math.random()*2)|0);
         for(let h=0;h<heaps;h++){ const a=Math.random()*6.283, rr=Math.sqrt(Math.random());
             const hx=cx+Math.cos(a)*rx*rr, hz=cz+Math.sin(a)*rz*rr;
-            const hr=85+Math.random()*150, hh=hr*(.9+Math.random()*.75);
-            const rings=[[6,1,.42],[5,.66,.32],[3,.36,.24],[1,.12,.2]];
+            const hr=95+Math.random()*120, hh=hr*(.9+Math.random()*.75);
+            const rings=[[4,1,.48],[3,.56,.34],[1,.18,.22]];
             for(const [n,radF,sF] of rings){ for(let i=0;i<n;i++){ const aa=n===1?0:i/n*6.283+h;
                 puff(hx+Math.cos(aa)*hr*radF, base+hh*(1-radF*.55)+(Math.random()-.5)*22, hz+Math.sin(aa)*hr*radF*.72, hr*sF*(.8+Math.random()*.4), radF<.3?0:0+ (radF===1?1:0)); } }
             puff(hx, base+hh, hz, hr*.22, 0);
         }
     }
-    mesh.instanceMatrix.needsUpdate=true;seedA.needsUpdate=true;scaleA.needsUpdate=true;darkA.needsUpdate=true;
+    mesh.instanceMatrix.needsUpdate=true;seedA.needsUpdate=true;scaleA.needsUpdate=true;darkA.needsUpdate=true;stormA.needsUpdate=true;
     worldNature.clouds=[mesh]; worldNature.cloudCenters=centers;
     // One high cirrus sheet for altitude flying (genuinely layered by nature).
     const cGeo=new THREE.PlaneGeometry(40000,40000);cGeo.rotateX(-Math.PI/2);
     const cMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.DoubleSide,uniforms:{
-        noiseAtlas:{value:getNatureNoise()},natureTime:worldNature.time,light,sunTint,fogTint,fogFar,uInCloud:{value:0},uCirrus:{value:1}},
+        noiseAtlas:{value:getNatureNoise()},natureTime:worldNature.time,light,sunTint,fogTint,fogFar,uInCloud:{value:0},cloudCover:{value:1},uCirrus:{value:1}},
         vertexShader:`varying vec3 vW;void main(){vec4 w=modelMatrix*vec4(position,1.);vW=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}`,
-        fragmentShader:`uniform sampler2D noiseAtlas;uniform float natureTime,light,fogFar,uInCloud;uniform vec3 sunTint,fogTint;varying vec3 vW;
+        fragmentShader:`uniform sampler2D noiseAtlas;uniform float natureTime,light,fogFar,uInCloud,cloudCover;uniform vec3 sunTint,fogTint;varying vec3 vW;
             void main(){vec2 uv=vW.xz*.00012+vec2(natureTime*.0002,natureTime*.00007);
             float w=texture2D(noiseAtlas,uv).r*.5+texture2D(noiseAtlas,uv*2.7+.3).r*.5;
             float dens=smoothstep(.58,.86,w)*.5;float f=smoothstep(fogFar*.6,fogFar,length(vW-cameraPosition));
             vec3 col=mix(mix(vec3(.9),sunTint,clamp(light,0.,1.)),fogTint,f*.6);
-            float a=dens*(1.-f)+uInCloud*.3; if(a<.006)discard; gl_FragColor=vec4(col,a);
+            float a=(dens*(1.-f)+uInCloud*.3)*cloudCover; if(a<.006)discard; gl_FragColor=vec4(col,a);
             #include <tonemapping_fragment>
-                #include <colorspace_fragment> }`});
+            #include <colorspace_fragment> }`});
     const cirrus=new THREE.Mesh(cGeo,cMat);cirrus.position.set(0,1750,0);cirrus.frustumCulled=false;cirrus.renderOrder=2;scene.add(cirrus);
     worldNature.cirrusMesh=cirrus;
     worldNature.cloudSlices=[mat,cMat];
@@ -733,7 +804,7 @@ function updateWorldNature(dt,cameraPosition){
         for(const tile of pending.map.values())tile.mesh.visible=true;worldNature.active=pending.map;worldNature.signature=pending.signature;worldNature.center.copy(pending.center);worldNature.pending=null;}
     updateNatureGrass(cameraPosition);updateForestLOD(cameraPosition);
     if(worldNature.cloudMaterial){const u=worldNature.cloudMaterial.uniforms;u.light.value=Math.max(.035,sun.intensity/2.75);u.sunTint.value.copy(sun.color);u.fogTint.value.copy(scene.fog?scene.fog.color:scene.background);u.fogFar.value=scene.fog?scene.fog.far:CFG.renderDistance;
-        if(u.wind){const tt=worldNature.time.value;u.wind.value.set(tt*7,tt*3.5);}
+        if(u.wind){const w=window.cityStrikeWind||{x:2,z:1};u.wind.value.x+=w.x*dt*.42;u.wind.value.y+=w.z*dt*.42;}
         if(worldNature.cirrusMesh){worldNature.cirrusMesh.position.x=cameraPosition.x;worldNature.cirrusMesh.position.z=cameraPosition.z;}
         // Whiteout only while actually inside a cumulus cluster footprint.
         const cy=cameraPosition.y, SPAN=worldNature.cloudSpan||56000; let inCore=0;
@@ -762,7 +833,7 @@ let scopeLevel = 0;
 
 const renderer = new THREE.WebGLRenderer({
     antialias:false,
-    powerPreference:'low-power',
+    powerPreference:'high-performance',
     stencil:false,
     logarithmicDepthBuffer:false
 });
@@ -808,6 +879,13 @@ const skyUniforms = atmosphereSky.material.uniforms;
 skyUniforms.turbidity.value=5.2; skyUniforms.rayleigh.value=2.1; skyUniforms.mieCoefficient.value=0.003; skyUniforms.mieDirectionalG.value=0.82;
 const _skyVec = new THREE.Vector3();
 
+// Deep-sky detail: stable star field and a physical moon disc follow the viewer.
+const starCount=1100,starPositions=new Float32Array(starCount*3),starColors=new Float32Array(starCount*3);
+for(let i=0;i<starCount;i++){const u=Math.random()*2-1,a=Math.random()*Math.PI*2,r=14500,flat=Math.sqrt(1-u*u),j=i*3;starPositions[j]=Math.cos(a)*flat*r;starPositions[j+1]=u*r;starPositions[j+2]=Math.sin(a)*flat*r;const v=.62+Math.random()*.38;starColors[j]=v;starColors[j+1]=v;starColors[j+2]=Math.min(1,v*1.16);}
+const starGeo=new THREE.BufferGeometry();starGeo.setAttribute('position',new THREE.BufferAttribute(starPositions,3));starGeo.setAttribute('color',new THREE.BufferAttribute(starColors,3));
+const starMaterial=new THREE.PointsMaterial({size:1.15,vertexColors:true,transparent:true,opacity:0,depthWrite:false,sizeAttenuation:false});const starField=new THREE.Points(starGeo,starMaterial);starField.renderOrder=-50;starField.frustumCulled=false;scene.add(starField);
+const moonDisc3D=new THREE.Mesh(new THREE.SphereGeometry(34,18,12),new THREE.MeshBasicMaterial({color:0xd9e7ff,fog:false,depthWrite:false,transparent:true,opacity:0}));moonDisc3D.renderOrder=-1;scene.add(moonDisc3D);
+
 // ─── ENVIRONMENT ───
 function makeEnvEquirect(){
     const W = 256, H = 128;
@@ -844,8 +922,9 @@ try {
 } catch(e){ console.warn('PMREM env failed:', e); }
 
 // ─── LIGHTS ───
-scene.add(new THREE.AmbientLight(0x8fbcdc, 0.32));
-scene.add(new THREE.HemisphereLight(0xa8d8ff, 0x33462f, 0.48));
+const ambientLight=new THREE.AmbientLight(0x8fbcdc,.32);scene.add(ambientLight);
+const hemisphereLight=new THREE.HemisphereLight(0xa8d8ff,0x33462f,.48);scene.add(hemisphereLight);
+const cityLightMaterials=[];
 const sceneFill = new THREE.DirectionalLight(0xb8d8ff,0.10);
 sceneFill.position.set(0,320,-180); scene.add(sceneFill);
 
@@ -876,6 +955,89 @@ scene.add(fillLight);
 
 const bounceLight = new THREE.HemisphereLight(0xffd9a8, 0x2a3a2a, 0.18);
 scene.add(bounceLight);
+
+
+// ─── WEATHER CONTROLLER ───
+// Weather is a lightweight scene controller: it changes wind, cloud opacity,
+// fog, wet road colour and a camera-centred rain field without allocating per frame.
+function applyClimateLighting(){
+    const phase=(timeOfDay/24)*Math.PI*2,elev=Math.sin(phase-Math.PI/2),day=THREE.MathUtils.smoothstep(elev,-.18,.26),night=1-day;
+    const w=(typeof weather!=='undefined'&&weather.state)?weather.state:{rain:0,cover:0,sunVisibility:1},sunVisibility=Number.isFinite(w.sunVisibility)?w.sunVisibility:1;
+    worldNature.night.value=night;
+    sun.intensity=Math.max(0,elev)*2.75*sunVisibility;
+    ambientLight.intensity=THREE.MathUtils.lerp(.018,.31,day)*(0.52+.48*sunVisibility);
+    hemisphereLight.intensity=THREE.MathUtils.lerp(.055,.48,day)*(0.58+.42*sunVisibility);
+    sceneFill.intensity=THREE.MathUtils.lerp(.012,.42,day)*(0.45+.55*sunVisibility);
+    fillLight.intensity=THREE.MathUtils.lerp(.018,.42,day)*(0.48+.52*sunVisibility);
+    bounceLight.intensity=THREE.MathUtils.lerp(.012,.22,day)*(0.5+.5*sunVisibility);
+    const skyLight=THREE.MathUtils.lerp(.018,.70,day)*(0.40+.60*sunVisibility),storm=w.rain||0,isRain=w.preset==='rain',isStorm=w.preset==='storm';
+    let skyHue=.62,skySat=.48,skyLevel=skyLight;
+    // Precipitation owns the palette: rain is a mid-grey overcast and storm is a muted grey-purple wall.
+    if(isRain){skyHue=.60;skySat=.075;skyLevel=THREE.MathUtils.lerp(.025,.48,day)*(.78+.22*sunVisibility);}
+    if(isStorm){skyHue=.72;skySat=.19;skyLevel=THREE.MathUtils.lerp(.022,.38,day)*(.72+.28*sunVisibility);}
+    scene.background.setHSL(skyHue,skySat*.55,skyLevel*.20);
+    skyMesh.material.color.setHSL(skyHue,skySat,skyLevel);
+    scene.fog.color.setHSL(skyHue,skySat*.52,Math.max(.025,skyLevel*.82));
+    atmosphereSky.visible=night<.72&&!isRain&&!isStorm;
+    renderer.toneMappingExposure=THREE.MathUtils.lerp(.62,1.08,day)*(0.86+.14*sunVisibility);
+    sunDisc3D.visible=elev>.02&&sunVisibility>.30&&!isRain&&!isStorm;sunDisc3D.material.opacity=sunDisc3D.visible?Math.min(.98,sunVisibility*1.25):0;
+    starMaterial.opacity=night*.9*(1-storm*.72)*(1-(w.cover||0)*.22);moonDisc3D.material.opacity=night*.92*(1-storm*.72);
+    for(const entry of cityLightMaterials)entry.material.emissiveIntensity=entry.day+(entry.night-entry.day)*night;
+}
+
+function createWeatherController(){
+    const count=VERY_LOW_MEM?260:LOW_MEM?700:1250,positions=new Float32Array(count*6),drops=[];
+    const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(positions,3));
+    const rain=new THREE.LineSegments(geo,new THREE.LineBasicMaterial({color:0xb9d9e8,transparent:true,opacity:0,depthWrite:false}));
+    rain.frustumCulled=false;rain.renderOrder=7;scene.add(rain);
+    for(let i=0;i<count;i++)drops.push({x:Infinity,z:Infinity,y:0,len:.65+Math.random()*1.25,fall:11+Math.random()*7});
+    const profiles={clear:{cover:.52,rain:0,wet:0,fog:1,wind:2.4,turbidity:3.4},cloudy:{cover:.84,rain:0,wet:.08,fog:.82,wind:5.2,turbidity:6.8},rain:{cover:1,rain:.64,wet:.72,fog:.58,wind:8.5,turbidity:9.5},storm:{cover:1,rain:1,wet:1,fog:.40,wind:15,turbidity:12.5}};
+    const state={preset:'clear',cover:.52,rain:0,wetness:0,fog:1,wind:2.4,turbidity:3.4,sunVisibility:1,lastWetPaint:-1,lastRainSound:0};
+    function setPreset(name){
+        state.preset=profiles[name]?name:'clear';
+        const control=document.getElementById('weather-select');if(control)control.value=state.preset;
+        showMessage('Weather · '+state.preset.toUpperCase());
+    }
+    function repaintWetSurfaces(){
+        const seen=new Set();for(const t of worldNature.active.values()){if(!seen.has(t)){seen.add(t);paintTerrainSurface(t);}}
+        if(worldNature.pending)for(const t of worldNature.pending.map.values())if(!seen.has(t)){seen.add(t);paintTerrainSurface(t);}
+    }
+    function update(dt,cam){
+        const p=profiles[state.preset],blend=Math.min(1,dt*.38);
+        for(const k of ['cover','rain','wetness','fog','wind','turbidity'])state[k]=THREE.MathUtils.lerp(state[k],p[k],blend);
+        const now=performance.now()*.001,windX=Math.sin(now*.11)*state.wind,windZ=Math.cos(now*.073)*state.wind*.58;
+        window.cityStrikeWind={x:windX,z:windZ};
+        worldNature.wetness.value=state.wetness;worldNature.treeSway.value=state.preset==='storm'?state.rain*.62:0;
+        if(worldNature.cloudMaterial){const u=worldNature.cloudMaterial.uniforms;if(u.cloudCover)u.cloudCover.value=state.cover;if(u.stormAmount)u.stormAmount.value=state.rain;}
+        if(worldNature.cloudSlices)for(const m of worldNature.cloudSlices)if(m.uniforms.cloudCover)m.uniforms.cloudCover.value=state.cover;
+        const light=THREE.MathUtils.clamp(Math.sin((timeOfDay/24)*Math.PI*2-Math.PI/2)*.5+.5,0,1);
+        skyUniforms.turbidity.value=THREE.MathUtils.lerp(2.5,state.turbidity,Math.max(state.cover*.65,state.rain));
+        skyUniforms.mieCoefficient.value=THREE.MathUtils.lerp(.002,.007,state.cover);
+        skyUniforms.mieDirectionalG.value=THREE.MathUtils.lerp(.78,.88,state.cover);
+        const flightVisibility=mode==='jet'?1.68:mode==='helicopter'?1.28:1;
+        scene.fog.far=Math.max(560,CFG.renderDistance*state.fog*flightVisibility);
+        scene.fog.near=Math.max(110,scene.fog.far*(mode==='jet'?.12:.19));
+        scene.fog.color.setHSL(.56,THREE.MathUtils.lerp(.24,.12,state.rain),THREE.MathUtils.lerp(.70,.38,state.rain)*(0.45+.55*light));
+        const cloudPattern=.58+.42*(.5+.5*Math.sin(cam.x*.00053+cam.z*.00031+now*.12)*Math.sin(cam.z*.00047-now*.08));
+        const cloudBlock=state.rain>.02?THREE.MathUtils.clamp((.42+state.rain*.53)*cloudPattern,0, .94):state.cover*.26*cloudPattern;
+        state.sunVisibility=THREE.MathUtils.clamp(1-cloudBlock,.06,1);
+        applyClimateLighting();
+        if(Math.abs(state.wetness-state.lastWetPaint)>.085){state.lastWetPaint=state.wetness;repaintWetSurfaces();}
+        rain.visible=state.rain>.015;rain.material.opacity=state.rain*.48;const activeDrops=Math.round(count*THREE.MathUtils.clamp(.18+state.rain*.82,0,1));rain.geometry.setDrawRange(0,activeDrops*2);updateWeatherAmbience(state.rain,state.wind);
+        if(!rain.visible)return;
+        const radius=state.preset==='storm'?98:82;
+        for(let i=0;i<activeDrops;i++){
+            const d=drops[i];if(!Number.isFinite(d.x)||Math.abs(d.x-cam.x)>radius||Math.abs(d.z-cam.z)>radius||d.y<terrainHeightAt(d.x,d.z)){
+                d.x=cam.x+(Math.random()-.5)*radius*2;d.z=cam.z+(Math.random()-.5)*radius*2;d.y=cam.y+16+Math.random()*55;
+            }
+            d.x+=windX*dt*.34;d.z+=windZ*dt*.34;d.y-=d.fall*dt;
+            const o=i*6;positions[o]=d.x;positions[o+1]=d.y;positions[o+2]=d.z;positions[o+3]=d.x-windX*.035;positions[o+4]=d.y+d.len;positions[o+5]=d.z-windZ*.035;
+        }
+        geo.attributes.position.needsUpdate=true;
+    }
+    return {state,setPreset,update,repaintWetSurfaces,rain};
+}
+const weather=createWeatherController();
 
 // ─── TEXTURE HELPERS ───
 function makeHeightCanvas(size){
@@ -1042,6 +1204,22 @@ function makeGroundTexture(){
     }
     return makeCanvasTexture(c);
 }
+// Inline, repeatable terrain albedo: this is deliberately local rather than a network asset,
+// so terrain keeps its base material when the browser is offline or blocks image loading.
+const groundBaseTex=makeGroundTexture();groundBaseTex.repeat.set(16,16);groundBaseTex.anisotropy=Math.min(4,MAX_ANISO);
+function makeSidingTexture(){
+    const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d');
+    x.fillStyle='#d7d1c4';x.fillRect(0,0,128,128);
+    for(let y=0;y<128;y+=12){x.fillStyle='rgba(54,43,34,.20)';x.fillRect(0,y,128,1);x.fillStyle='rgba(255,255,255,.18)';x.fillRect(0,y+2,128,1);}
+    for(let i=0;i<260;i++){const px=Math.random()*128,py=Math.random()*128;x.fillStyle=`rgba(80,65,48,${.025+Math.random()*.06})`;x.fillRect(px,py,2+Math.random()*7,1);}
+    return makeCanvasTexture(c);
+}
+function makeRoofTexture(){
+    const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d');x.fillStyle='#766055';x.fillRect(0,0,128,128);
+    for(let y=0;y<128;y+=10){x.fillStyle='rgba(24,20,19,.36)';x.fillRect(0,y,128,1);for(let q=(y/10)%2?0:9;q<128;q+=18){x.fillStyle='rgba(205,186,166,.12)';x.fillRect(q,y+2,14,1);}}
+    return makeCanvasTexture(c);
+}
+const houseSidingTex=makeSidingTexture(),roofShingleTex=makeRoofTexture();
 
 // ─── IMPROVED CLOUD TEXTURE ───
 function makeCloudTexture(){
@@ -1183,7 +1361,7 @@ function updateQueuedExplosionGameplay(dt){
 const cloudGroups = [];
 const activeBlasts = [];
 const buildings = [];
-let playerHealth = 100, cash = 250;
+let playerHealth = 100, cash = 250, subtitlesEnabled = true, audioVolume = .70;
 let isDead = false, isMapOpen = false, isShopOpen = false, isSettingsOpen = false;
 let moveForward=false, moveBackward=false, moveLeft=false, moveRight=false, isSprinting=false, canJump=false;
 let jetBoost = false;
@@ -1218,7 +1396,101 @@ let crashDamageCooldown = 0;
 const _vc = new THREE.Vector3(), _vd = new THREE.Vector3();
 const _cwp = new THREE.Vector3(), _cwq = new THREE.Quaternion();
 
-const mapState = { zoom: 0.26, panX: 0, panZ: 0, locked: false, dragging: false, dragStartX: 0, dragStartY: 0, startPanX: 0, startPanZ: 0 };
+const MAP_WORLD_MARGIN=.88, MAP_MIN_ZOOM=.0005;
+function fullWorldMapZoom(){return Math.max(MAP_MIN_ZOOM,Math.min(.4,Math.min(window.innerWidth,window.innerHeight)*MAP_WORLD_MARGIN/CFG.worldSize));}
+const mapState = { zoom: fullWorldMapZoom(), panX: 0, panZ: 0, locked: false, dragging: false, strikeMode:false, strikeWeapon:null, dragStartX: 0, dragStartY: 0, startPanX: 0, startPanZ: 0 };
+
+const mapLayers={objectives:true,threats:true,vehicles:true,stores:true,teleport:true};
+
+const SAVE_KEY='city-strike.save.v4';let pendingSaveState=null,lastAutoSave=0;
+function saveGameState(){
+    try{const player=webcam.viewing?webcam.returnPosition:camera.position,damage=buildings.filter(b=>b.damage>0||b.ruined).slice(0,160).map(b=>({x:b.x,z:b.z,damage:b.damage,ruined:b.ruined}));
+        localStorage.setItem(SAVE_KEY,JSON.stringify({v:4,cash,health:playerHealth,inventory,ammo,jetpackOwned,jetpackActive,player:{x:player.x,y:player.y,z:player.z,q:[camera.quaternion.x,camera.quaternion.y,camera.quaternion.z,camera.quaternion.w]},settings:{time:timeOfDay,gfx:currentGfxMode,speed:playerSpeed,weather:weather.state.preset,audio:audioVolume,subtitles:subtitlesEnabled,layers:mapLayers},damage}));
+    }catch(_){/* Storage can be blocked by privacy mode; gameplay remains fully local. */}
+}
+function loadGameState(){
+    try{const s=JSON.parse(localStorage.getItem(SAVE_KEY)||'null');if(!s||s.v!==4)return null;
+        cash=Number.isFinite(s.cash)?s.cash:cash;playerHealth=THREE.MathUtils.clamp(Number(s.health)||playerHealth,1,100);
+        if(Array.isArray(s.inventory)&&s.inventory.length===inventory.length)s.inventory.forEach((v,i)=>inventory[i]=!!v);
+        if(Array.isArray(s.ammo)&&s.ammo.length===ammo.length)s.ammo.forEach((v,i)=>ammo[i]=Math.max(0,Number(v)||0));
+        jetpackOwned=!!s.jetpackOwned;jetpackActive=!!s.jetpackActive;pendingSaveState=s;return s;
+    }catch(_){return null;}
+}
+function applySavedWorldState(){
+    const s=pendingSaveState;if(!s)return;const cfg=s.settings||{};
+    if(s.player&&Math.abs(s.player.x)<=CFG.worldSize*.5&&Math.abs(s.player.z)<=CFG.worldSize*.5){camera.position.set(s.player.x,Math.max(terrainHeightAt(s.player.x,s.player.z)+1.6,s.player.y||0),s.player.z);if(Array.isArray(s.player.q)&&s.player.q.length===4)camera.quaternion.fromArray(s.player.q);}
+    if(Number.isFinite(cfg.time))applyTimeOfDay(cfg.time);if(cfg.gfx)applyGraphicsMode(cfg.gfx);if(Number.isFinite(cfg.speed)){playerSpeed=cfg.speed;document.getElementById('speed-slider').value=String(playerSpeed);document.getElementById('speed-val').textContent=String(playerSpeed);}if(cfg.weather)weather.setPreset(cfg.weather);if(Number.isFinite(cfg.audio)){setAudioVolume(cfg.audio);document.getElementById('audio-volume').value=String(Math.round(cfg.audio*100));document.getElementById('audio-val').textContent=Math.round(cfg.audio*100)+'%';}subtitlesEnabled=cfg.subtitles!==false;document.getElementById('subtitles-toggle').checked=subtitlesEnabled;
+    if(cfg.layers)for(const k of Object.keys(mapLayers))if(typeof cfg.layers[k]==='boolean'){mapLayers[k]=cfg.layers[k];const el=document.querySelector(`[data-map-layer="${k}"]`);if(el)el.checked=mapLayers[k];}
+    for(const d of s.damage||[]){let best=null,dist=5;for(const b of buildings){const dd=Math.hypot(b.x-d.x,b.z-d.z);if(dd<dist){best=b;dist=dd;}}if(best){best.damage=Math.max(best.damage,d.damage||0);if(d.ruined){damageBuilding(best,new THREE.Vector3(best.x,best.groundY+best.h*.5,best.z),Math.max(best.w,best.d)*1.4,3);best.ruined=true;}}}
+    healthBar.style.width=playerHealth+'%';updateWeaponUI();updateHUD();pendingSaveState=null;
+}
+window.addEventListener('pagehide',saveGameState);setInterval(()=>{if(performance.now()-lastAutoSave>18000){lastAutoSave=performance.now();saveGameState();}},5000);
+const scheduledMapStrikes=[];
+const webcam={has:false,placing:false,viewing:false,noService:false,position:new THREE.Vector3(),lookAt:new THREE.Vector3(),returnPosition:new THREE.Vector3(),returnQuaternion:new THREE.Quaternion(),yaw:0,pitch:-.06,nextFrame:0,shouldRender:true};
+
+const photoMode={active:false,path:0,phase:0,focus:new THREE.Vector3(),savedPosition:new THREE.Vector3(),savedQuaternion:new THREE.Quaternion()};
+const PHOTO_PATHS=['ORBIT','FLYBY','OVERHEAD'];
+function togglePhotoMode(){
+    if(!photoMode.active&&mode!=='walking'){showMessage('Exit the vehicle before using the cinematic camera');return;}
+    if(photoMode.active){photoMode.active=false;camera.position.copy(photoMode.savedPosition);camera.quaternion.copy(photoMode.savedQuaternion);showMessage('Cinematic camera returned');return;}
+    if(webcam.viewing)toggleWebcamView();photoMode.active=true;photoMode.phase=0;photoMode.savedPosition.copy(camera.position);camera.getWorldQuaternion(photoMode.savedQuaternion);camera.getWorldDirection(_vd);photoMode.focus.copy(camera.position).addScaledVector(_vd,80);photoMode.focus.y=Math.max(terrainHeightAt(photoMode.focus.x,photoMode.focus.z)+10,photoMode.focus.y);releaseMovementInput();showMessage('Cinematic '+PHOTO_PATHS[photoMode.path]+' · R return · Shift+R path');
+}
+function cyclePhotoPath(){photoMode.path=(photoMode.path+1)%PHOTO_PATHS.length;photoMode.phase=0;showMessage('Cinematic path · '+PHOTO_PATHS[photoMode.path]);}
+function updatePhotoMode(dt){
+    if(!photoMode.active)return false;photoMode.phase+=dt;const a=photoMode.phase*.16,focus=photoMode.focus;
+    if(photoMode.path===0)camera.position.set(focus.x+Math.cos(a)*130,focus.y+34+Math.sin(a*.7)*18,focus.z+Math.sin(a)*130);
+    else if(photoMode.path===1)camera.position.set(focus.x+Math.sin(a)*210,focus.y+20+Math.sin(a*.5)*12,focus.z+180-Math.cos(a)*125);
+    else camera.position.set(focus.x+Math.cos(a*.55)*85,focus.y+180,focus.z+Math.sin(a*.55)*85);
+    camera.lookAt(focus);return true;
+}
+const graphicsBenchmark={active:false,start:0,frames:0,min:Infinity,max:0};
+function runGraphicsBenchmark(){
+    graphicsBenchmark.active=true;graphicsBenchmark.start=performance.now();graphicsBenchmark.frames=0;graphicsBenchmark.min=Infinity;graphicsBenchmark.max=0;document.getElementById('benchmark-readout').textContent='Measuring 8 seconds of live GPU/CPU frame pacing…';showMessage('Benchmark started · keep the game visible');
+}
+function updateGraphicsBenchmark(rawMs,now){
+    if(!graphicsBenchmark.active)return;graphicsBenchmark.frames++;graphicsBenchmark.min=Math.min(graphicsBenchmark.min,rawMs);graphicsBenchmark.max=Math.max(graphicsBenchmark.max,rawMs);const elapsed=now-graphicsBenchmark.start;
+    if(elapsed<8000){document.getElementById('benchmark-readout').textContent='Benchmark '+Math.ceil((8000-elapsed)/1000)+'s · '+Math.round(1000/Math.max(1,rawMs))+' FPS';return;}
+    graphicsBenchmark.active=false;const fps=graphicsBenchmark.frames/(elapsed/1000),quality=fps>=58?'excellent':fps>=42?'playable':'reduce quality';document.getElementById('benchmark-readout').textContent=`${fps.toFixed(1)} FPS · ${graphicsBenchmark.max.toFixed(1)} ms worst frame · ${quality}`;showMessage('Benchmark complete · '+quality);
+}
+function mapWorldFromEvent(e){const rect=fullMapCanvas.getBoundingClientRect(),cx=e.clientX-rect.left,cy=e.clientY-rect.top;return {x:(cx-fullMapCanvas.width/2)/mapState.zoom+mapState.panX,z:(cy-fullMapCanvas.height/2)/mapState.zoom+mapState.panZ};}
+function webcamStatus(text,problem=false){const el=document.getElementById('webcam-status');el.innerHTML=text;el.classList.toggle('active',webcam.viewing||problem);el.style.color=problem?'#ff9988':'#c9ecff';}
+function toggleWebcamPlacement(){
+    if(!isMapOpen){showMessage('Open the map before placing a webcam');return;}
+    webcam.placing=!webcam.placing;mapState.strikeMode=false;document.getElementById('map-strike-panel').classList.remove('open');
+    document.getElementById('map-webcam').classList.toggle('active',webcam.placing);
+    showMessage(webcam.placing?(webcam.has?'Click a map location to move webcam':'Click a map location to place webcam'):'Webcam placement cancelled');drawFullMap();
+}
+function refreshWebcamDirection(){const cp=Math.cos(webcam.pitch),dir=new THREE.Vector3(Math.sin(webcam.yaw)*cp,Math.sin(webcam.pitch),-Math.cos(webcam.yaw)*cp);webcam.lookAt.copy(webcam.position).addScaledVector(dir,90);}
+function turnWebcam(yawDelta,pitchDelta=0){webcam.yaw+=yawDelta;webcam.pitch=THREE.MathUtils.clamp(webcam.pitch+pitchDelta,-.70,.45);refreshWebcamDirection();webcam.nextFrame=0;}
+function placeWebcamFromMap(e){
+    const p=mapWorldFromEvent(e),half=CFG.worldSize*.5;
+    if(Math.abs(p.x)>half||Math.abs(p.z)>half){showMessage('Outside operational map');return;}
+    webcam.position.set(p.x,terrainHeightAt(p.x,p.z)+1.68,p.z);webcam.yaw=0;webcam.pitch=-.055;refreshWebcamDirection();
+    webcam.has=true;webcam.noService=false;webcam.placing=false;document.getElementById('map-webcam').classList.remove('active');
+    showMessage('REMOTE WEBCAM PLACED · press = to observe');drawFullMap();
+}
+function toggleWebcamView(){
+    if(!webcam.viewing&&mode!=='walking'){showMessage('Exit the vehicle before linking the remote webcam');return;}
+    if(!webcam.has){showMessage('Place a webcam on the map with \\');return;}
+    if(webcam.noService){showMessage('WEBCAM NO SERVICE · relocate it on the map');return;}
+    if(webcam.viewing){
+        webcam.viewing=false;camera.position.copy(webcam.returnPosition);camera.quaternion.copy(webcam.returnQuaternion);renderer.domElement.classList.remove('webcam-pixelate');document.getElementById('webcam-overlay').classList.remove('active');resizeRenderer();webcamStatus('',false);showMessage('Returned to player camera');return;
+    }
+    webcam.returnPosition.copy(camera.position);camera.getWorldQuaternion(webcam.returnQuaternion);webcam.viewing=true;webcam.nextFrame=0;webcam.shouldRender=true;velocity.set(0,0,0);releaseMovementInput();setScopeLevel(0);
+    if(isMapOpen)toggleMap();controls.lock();renderer.domElement.classList.add('webcam-pixelate');resizeRenderer();document.getElementById('webcam-overlay').classList.add('active');webcamStatus('REMOTE WEBCAM · 2 FPS<br>ARROWS · PAN / TILT');showMessage('Remote observer linked · = return');
+}
+function updateWebcamView(now){
+    if(!webcam.viewing)return true;
+    if(webcam.noService){webcam.viewing=false;renderer.domElement.classList.remove('webcam-pixelate');document.getElementById('webcam-overlay').classList.remove('active');resizeRenderer();webcamStatus('NO SERVICE · SIGNAL LOST',true);return true;}
+    camera.position.copy(webcam.position);camera.lookAt(webcam.lookAt);
+    if(now>=webcam.nextFrame){webcam.nextFrame=now+500;webcam.shouldRender=true;webcamStatus('REMOTE WEBCAM · 2 FPS<br>FRAME '+Math.floor(now/500));return true;}
+    webcam.shouldRender=false;return false;
+}
+function disruptWebcam(pos){
+    if(!webcam.has||webcam.noService||webcam.position.distanceTo(pos)>250)return;
+    webcam.noService=true;if(webcam.viewing){webcam.viewing=false;camera.position.copy(webcam.returnPosition);camera.quaternion.copy(webcam.returnQuaternion);renderer.domElement.classList.remove('webcam-pixelate');document.getElementById('webcam-overlay').classList.remove('active');resizeRenderer();}
+    webcamStatus('NO SERVICE · BLAST INTERFERENCE',true);showMessage('Remote webcam signal lost to blast interference');
+}
 
 // ─── DEBRIS PANEL PHYSICS ───
 const debrisPanels = [];
@@ -1324,12 +1596,12 @@ const sunDiscEl = document.getElementById('sun-disc');
 const missileCamBadge = document.getElementById('missile-cam-badge');
 const mapZoomLabel = document.getElementById('map-zoom-label');
 const mapLockBtn = document.getElementById('map-lock');
+const mapLayersPanel=document.getElementById('map-layer-panel'),mapStrikePanel=document.getElementById('map-strike-panel'),strikeOptions=document.getElementById('strike-options'),strikeTimer=document.getElementById('strike-timer');
+const subtitleBox=document.getElementById('subtitle-box');
 
 function showMessage(t){
-    messageBox.innerText = t;
-    messageBox.style.opacity = 1;
-    clearTimeout(showMessage._t);
-    showMessage._t = setTimeout(()=>messageBox.style.opacity = 0, 1600);
+    messageBox.innerText=t;messageBox.style.opacity=1;clearTimeout(showMessage._t);showMessage._t=setTimeout(()=>messageBox.style.opacity=0,1600);
+    if(subtitlesEnabled&&subtitleBox){subtitleBox.textContent=t;subtitleBox.classList.add('active');clearTimeout(showMessage._sub);showMessage._sub=setTimeout(()=>subtitleBox.classList.remove('active'),2200);}
 }
 
 for(let i=0;i<WEAPONS.length;i++){
@@ -1445,7 +1717,7 @@ function updateSpeedometer(dt){
     if(Math.abs(displayedSpeed) < 0.5) displayedSpeed = 0;
     speedValueEl.textContent = Math.round(displayedSpeed);
     let maxSpeed = 60;
-    if(mode === 'jet') maxSpeed = (JET_PRESETS[currentVehicle?.userData.preset] || JET_PRESETS.fighter).speed * 3.0;
+    if(mode === 'jet') maxSpeed = (JET_PRESETS[currentVehicle?.userData.preset] || JET_PRESETS.fighter).speed * 2.23694 * 1.10;
     else if(mode === 'helicopter') maxSpeed = 200;
     else if(mode === 'car' || mode === 'bike') maxSpeed = 150;
     else maxSpeed = 30;
@@ -1455,64 +1727,70 @@ function updateSpeedometer(dt){
 }
 
 // ─── AUDIO ───
-let audioCtx = null;
+let audioCtx=null,audioMaster=null,weatherNoise=null,weatherGain=null;
 function getAudioContext(){
-    if(audioCtx) return audioCtx;
-    const C = window.AudioContext || window.webkitAudioContext;
-    if(!C) return null;
-    try { audioCtx = new C(); } catch(_){ return null; }
-    return audioCtx;
+    if(audioCtx)return audioCtx;const C=window.AudioContext||window.webkitAudioContext;if(!C)return null;
+    try{audioCtx=new C();audioMaster=audioCtx.createGain();audioMaster.gain.value=audioVolume;audioMaster.connect(audioCtx.destination);}catch(_){return null;}return audioCtx;
 }
+function setAudioVolume(value){audioVolume=THREE.MathUtils.clamp(value,0,1);if(audioMaster&&audioCtx)audioMaster.gain.setTargetAtTime(audioVolume,audioCtx.currentTime,.05);}
+function updateWeatherAmbience(rain,wind){
+    if(!audioCtx||!audioMaster)return;try{if(!weatherNoise){const b=audioCtx.createBuffer(1,audioCtx.sampleRate*2,audioCtx.sampleRate),d=b.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;weatherNoise=audioCtx.createBufferSource();weatherNoise.buffer=b;weatherNoise.loop=true;const f=audioCtx.createBiquadFilter();f.type='lowpass';f.frequency.value=900;weatherGain=audioCtx.createGain();weatherGain.gain.value=0;weatherNoise.connect(f);f.connect(weatherGain);weatherGain.connect(audioMaster);weatherNoise.start();}weatherGain.gain.setTargetAtTime(Math.min(.14,rain*.10+wind*.002),audioCtx.currentTime,.3);}catch(_){}}
 function resumeAudio(){
     const ctx = getAudioContext();
     if(ctx && ctx.state === 'suspended') ctx.resume().catch(()=>{});
     return ctx;
 }
-function playSound(t){
+function spatialAudioMix(pos){
+    const cam=getCameraWorldPos(),d=cam.distanceTo(pos),distanceGain=THREE.MathUtils.clamp(1-d/1800,.12,1);
+    let blocked=0,steps=Math.min(10,Math.floor(d/80));
+    for(let i=1;i<steps;i++){const f=i/steps,x=cam.x+(pos.x-cam.x)*f,z=cam.z+(pos.z-cam.z)*f;if(pointIsBlocked(x,z,1)){blocked++;if(blocked>=2)break;}}
+    return distanceGain*(blocked>=2?.34:blocked?.62:1);
+}
+function playSound(t,mix=1){
     const ctx = resumeAudio(); if(!ctx) return;
     try {
         const o = ctx.createOscillator(), g = ctx.createGain();
-        o.connect(g); g.connect(ctx.destination);
+        o.connect(g); g.connect(audioMaster||ctx.destination);
         const n = ctx.currentTime;
         if(t === 'shoot'){
             o.type='sawtooth'; o.frequency.setValueAtTime(700,n); o.frequency.linearRampToValueAtTime(400,n+.03);
-            g.gain.setValueAtTime(.08,n); g.gain.exponentialRampToValueAtTime(.001,n+.05); o.start(); o.stop(n+.05);
+            g.gain.setValueAtTime(.08*mix,n); g.gain.exponentialRampToValueAtTime(.001,n+.05); o.start(); o.stop(n+.05);
         } else if(t === 'shootHeavy'){
             o.type='square'; o.frequency.setValueAtTime(200,n); o.frequency.linearRampToValueAtTime(80,n+.15);
-            g.gain.setValueAtTime(.14,n); g.gain.exponentialRampToValueAtTime(.001,n+.2); o.start(); o.stop(n+.2);
+            g.gain.setValueAtTime(.14*mix,n); g.gain.exponentialRampToValueAtTime(.001,n+.2); o.start(); o.stop(n+.2);
         } else if(t === 'explosion'){
             const s = ctx.createBufferSource();
             const b = ctx.createBuffer(1, ctx.sampleRate*.3, ctx.sampleRate);
             const d = b.getChannelData(0);
             for(let i=0;i<d.length;i++) d[i] = (Math.random()*2-1)*(1-i/d.length);
             s.buffer = b; s.connect(g);
-            g.gain.setValueAtTime(.5,n); g.gain.exponentialRampToValueAtTime(.01,n+.3); s.start();
+            g.gain.setValueAtTime(.5*mix,n); g.gain.exponentialRampToValueAtTime(.01,n+.3); s.start();
         } else if(t === 'explosionBig'){
             const s = ctx.createBufferSource();
             const b = ctx.createBuffer(1, ctx.sampleRate*.9, ctx.sampleRate);
             const d = b.getChannelData(0);
             for(let i=0;i<d.length;i++) d[i] = (Math.random()*2-1)*Math.pow(1-i/d.length,1.5);
             s.buffer = b; s.connect(g);
-            g.gain.setValueAtTime(.7,n); g.gain.exponentialRampToValueAtTime(.01,n+.9); s.start();
+            g.gain.setValueAtTime(.7*mix,n); g.gain.exponentialRampToValueAtTime(.01,n+.9); s.start();
         } else if(t === 'pickup'){
             o.type='sine'; o.frequency.setValueAtTime(480,n); o.frequency.linearRampToValueAtTime(860,n+.07);
-            g.gain.setValueAtTime(.06,n); g.gain.linearRampToValueAtTime(0,n+.07); o.start(); o.stop(n+.07);
+            g.gain.setValueAtTime(.06*mix,n); g.gain.linearRampToValueAtTime(0,n+.07); o.start(); o.stop(n+.07);
         } else if(t === 'heal'){
             o.type='triangle'; o.frequency.setValueAtTime(280,n); o.frequency.linearRampToValueAtTime(680,n+.14);
-            g.gain.setValueAtTime(.06,n); g.gain.linearRampToValueAtTime(0,n+.14); o.start(); o.stop(n+.14);
+            g.gain.setValueAtTime(.06*mix,n); g.gain.linearRampToValueAtTime(0,n+.14); o.start(); o.stop(n+.14);
         } else if(t === 'score'){
             o.type='square'; o.frequency.setValueAtTime(420,n); o.frequency.setValueAtTime(640,n+.04);
-            g.gain.setValueAtTime(.04,n); g.gain.linearRampToValueAtTime(0,n+.08); o.start(); o.stop(n+.08);
+            g.gain.setValueAtTime(.04*mix,n); g.gain.linearRampToValueAtTime(0,n+.08); o.start(); o.stop(n+.08);
         } else if(t === 'cheat'){
             o.type='sine'; o.frequency.setValueAtTime(880,n); o.frequency.setValueAtTime(1320,n+.08); o.frequency.setValueAtTime(1760,n+.16);
-            g.gain.setValueAtTime(.06,n); g.gain.linearRampToValueAtTime(0,n+.25); o.start(); o.stop(n+.25);
+            g.gain.setValueAtTime(.06*mix,n); g.gain.linearRampToValueAtTime(0,n+.25); o.start(); o.stop(n+.25);
         } else if(t === 'crash'){
             const s = ctx.createBufferSource();
             const b = ctx.createBuffer(1, ctx.sampleRate*.5, ctx.sampleRate);
             const d = b.getChannelData(0);
             for(let i=0;i<d.length;i++) d[i] = (Math.random()*2-1)*Math.pow(1-i/d.length,2);
             s.buffer = b; s.connect(g);
-            g.gain.setValueAtTime(.6,n); g.gain.exponentialRampToValueAtTime(.01,n+.5); s.start();
+            g.gain.setValueAtTime(.6*mix,n); g.gain.exponentialRampToValueAtTime(.01,n+.5); s.start();
         }
     } catch(_){}
 }
@@ -1523,7 +1801,7 @@ function startCarSound(){
         carEngineOsc = ctx.createOscillator(); carEngineGain = ctx.createGain();
         carEngineOsc.type='sawtooth'; carEngineOsc.frequency.value = 50;
         const f = ctx.createBiquadFilter(); f.type='lowpass'; f.frequency.value = 200;
-        carEngineOsc.connect(f); f.connect(carEngineGain); carEngineGain.connect(ctx.destination);
+        carEngineOsc.connect(f); f.connect(carEngineGain); carEngineGain.connect(audioMaster||ctx.destination);
         carEngineGain.gain.setValueAtTime(0, ctx.currentTime);
         carEngineGain.gain.linearRampToValueAtTime(.05, ctx.currentTime + .2);
         carEngineOsc.start();
@@ -1725,8 +2003,7 @@ function applyVehicleChase(v, dt){
     _tpDesired.set(0, up, behind);
     const k = 1-Math.exp(-7*dt);
     camera.position.lerp(_tpDesired, k);
-    // Do not call lookAt() here: PointerLockControls owns camera rotation so
-    // third-person camera movement remains fully mouse-controlled.
+    // Camera rotation belongs to PointerLockControls here, so the player can freely look around the chase view.
     const cockpit = v.userData.cockpit;
     if(cockpit) cockpit.visible = false;
 }
@@ -1744,9 +2021,6 @@ function thirdPersonOnFoot(dt){
         tpHeadSaved=false;
         return;
     }
-    // Preserve the actual player/physics position before placing the render camera.
-    // PointerLockControls remains the sole owner of camera rotation, so mouse look
-    // can freely orbit/look around without a per-frame lookAt() locking it.
     _tpHead.copy(camera.position); tpHeadSaved=true;
     camera.getWorldDirection(_tpFwd); _tpFwd.y=0;
     if(_tpFwd.lengthSq()<0.001) _tpFwd.set(0,0,-1); else _tpFwd.normalize();
@@ -1758,20 +2032,11 @@ function thirdPersonOnFoot(dt){
     const gy=terrainHeightAt(cx,cz)+0.6;
     if(cy<gy) cy=gy;
     camera.position.set(cx,cy,cz);
-
-    // Keep the character physically in front of the camera while allowing the
-    // camera to look independently. The avatar faces actual travel direction,
-    // rather than being forced to rotate with the camera every frame.
+    // Avatar stands at the eye position, facing where the camera faces.
     av.visible=true;
     av.position.set(_tpHead.x, _tpHead.y-1.5, _tpHead.z);
-    const moveX=velocity.x, moveZ=velocity.z;
-    if(Math.hypot(moveX,moveZ)>0.35){
-        _tpTmp.set(av.position.x+moveX, av.position.y, av.position.z+moveZ);
-        av.lookAt(_tpTmp);
-    } else {
-        // Stand naturally when stationary; preserve the last heading.
-        av.rotation.y = av.rotation.y;
-    }
+    _tpTmp.set(_tpHead.x+_tpFwd.x, av.position.y, _tpHead.z+_tpFwd.z);
+    av.lookAt(_tpTmp);
     const spd=Math.hypot(velocity.x,velocity.z);
     if(spd>1.4){ applyWalkCycle(av.userData, dt, isSprinting?1.9:1); }
     else { for(const k of ['legL','legR','armL','armR']) av.userData.limbs[k].rotation.x*=Math.exp(-10*dt); }
@@ -1876,8 +2141,8 @@ const downtownMats = downColors.map(c => makeEfficientMaterial({
     color: c, map: downtownFacadeTex, roughnessMap: windowRoughTex,
     roughness: 0.76, metalness: 0.24, envMapIntensity: 1.12,
 }));
-const suburbWallMats = suburbWallColors.map(c => makeEfficientMaterial({ color: c, roughness: .90, metalness: .02, envMapIntensity: .55 }));
-const suburbRoofMats = suburbRoofColors.map(c => makeEfficientMaterial({ color: c, roughness: .88, metalness: .04, envMapIntensity: .6 }));
+const suburbWallMats = suburbWallColors.map(c => makeEfficientMaterial({ color: c, map:houseSidingTex, roughness: .90, metalness: .02, envMapIntensity: .55 }));
+const suburbRoofMats = suburbRoofColors.map(c => makeEfficientMaterial({ color: c, map:roofShingleTex, roughness: .88, metalness: .04, envMapIntensity: .6 }));
 const barnMats = barnColors.map(c => makeEfficientMaterial({ color: c, roughness: .94, metalness: .02, envMapIntensity: .4 }));
 const signMats = signColors.map(c => makeEfficientMaterial({ color: c, roughness: .4, metalness: .1, emissive: c, emissiveIntensity: .28, envMapIntensity: .9 }));
 
@@ -1885,8 +2150,8 @@ const signMats = signColors.map(c => makeEfficientMaterial({ color: c, roughness
 /* CITY STRIKE r160 — bounded, spatially chunked instanced-building replacement.
    Install once at the original createDowntownBuilding declaration (see manifest). */
 
-const BUILDING_LIMIT = VERY_LOW_MEM ? 2600 : DECENT_GPU ? 11000 : 7200;
-const BUILDING_TOWN_RESERVE = VERY_LOW_MEM ? 200 : DECENT_GPU ? 1800 : 1100;
+const BUILDING_LIMIT = VERY_LOW_MEM ? 2600 : DECENT_GPU ? 20000 : 16000;
+const BUILDING_TOWN_RESERVE = VERY_LOW_MEM ? 200 : DECENT_GPU ? 1900 : 1400;
 const CITY_BUILDING_LIMIT = Math.floor((BUILDING_LIMIT - BUILDING_TOWN_RESERVE) / CITY_CENTERS.length);
 const BUILDING_CHUNK_SIZE = 3072;
 const BUILDING_WINDOW_CAP = VERY_LOW_MEM ? 420 : LOW_MEM ? 650 : 880;
@@ -1933,8 +2198,8 @@ const buildingMats = {
     concrete:makeEfficientMaterial({color:0x73808a,roughness:.88,metalness:.04,envMapIntensity:.45}),
     glass:makeEfficientMaterial({color:0x263e52,roughness:.42,metalness:.18,envMapIntensity:.35}),
     apartment:makeEfficientMaterial({color:0x96958e,roughness:.89,metalness:.02,envMapIntensity:.42}),
-    house:makeEfficientMaterial({color:0xd0bea0,roughness:.93,metalness:.01,envMapIntensity:.35}),
-    roof:makeEfficientMaterial({color:0x503d35,roughness:.91,metalness:.02,envMapIntensity:.35}),
+    house:makeEfficientMaterial({color:0xd0bea0,map:houseSidingTex,roughness:.93,metalness:.01,envMapIntensity:.35}),
+    roof:makeEfficientMaterial({color:0x503d35,map:roofShingleTex,roughness:.91,metalness:.02,envMapIntensity:.35}),
     trim:makeEfficientMaterial({color:0x262d32,roughness:.73,metalness:.16,envMapIntensity:.52}),
     shop:makeEfficientMaterial({color:0x607984,roughness:.79,metalness:.06,envMapIntensity:.5}),
     gas:makeEfficientMaterial({color:0xe0ae45,roughness:.53,metalness:.18,emissive:0x50320a,emissiveIntensity:.12}),
@@ -1951,9 +2216,10 @@ const buildingMats = {
 /* Small procedural shader additions: no canvas, image, or world-sized texture allocation. */
 function _buildingShader(mat, cement, facadeWindows){
     mat.onBeforeCompile = shader => {
+        shader.uniforms.cityNight=worldNature.night;
         shader.vertexShader = 'varying vec3 vCSWorldPos; varying vec3 vCSLocalPos;\n' + shader.vertexShader;
         shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vCSLocalPos=position;\n vec4 csWP=vec4(transformed,1.0);\n #ifdef USE_INSTANCING\n csWP=instanceMatrix*csWP;\n #endif\n vCSWorldPos=(modelMatrix*csWP).xyz;');
-        shader.fragmentShader = 'varying vec3 vCSWorldPos; varying vec3 vCSLocalPos;\nfloat csHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}\n' + shader.fragmentShader;
+        shader.fragmentShader = 'uniform float cityNight;\nvarying vec3 vCSWorldPos; varying vec3 vCSLocalPos;\nfloat csHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}\n' + shader.fragmentShader;
         let patch = '';
         if(cement) patch += `
             float csGrain=csHash(floor(vCSWorldPos.xz*2.7)+floor(vCSWorldPos.y*3.1));
@@ -1968,11 +2234,12 @@ function _buildingShader(mat, cement, facadeWindows){
             float csAlong=mix(vCSWorldPos.x,vCSWorldPos.z,step(.487,abs(vCSLocalPos.x)));
             float csCols=abs(fract(csAlong/6.0)-.5);
             float csPane=csSide*(1.0-smoothstep(.20,.27,csVert))*(1.0-smoothstep(.22,.28,csCols));
-            float csWarm=step(.94,csHash(floor(vCSWorldPos.xz/6.)+floor(vCSWorldPos.y/5.)));
-            vec3 csWin=mix(vec3(.025,.10,.17),vec3(.95,.49,.16),csWarm);
-            diffuseColor.rgb=mix(diffuseColor.rgb,csWin,csPane*.72);
+            float csWarm=step(.63,csHash(floor(vCSWorldPos.xz/6.)+floor(vCSWorldPos.y/5.)));
+            vec3 csWin=mix(vec3(.025,.10,.17),vec3(1.0,.45,.09),csWarm);
+            diffuseColor.rgb=mix(diffuseColor.rgb,csWin,csPane*(.18+cityNight*.82));
         `;
         shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n' + patch);
+        if(facadeWindows)shader.fragmentShader=shader.fragmentShader.replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\n totalEmissiveRadiance+=mix(vec3(.01,.035,.07),vec3(1.0,.28,.045),csWarm)*csPane*cityNight*2.1;');
     };
     mat.customProgramCacheKey = () => 'city-strike-building-' + cement + '-' + facadeWindows;
     mat.needsUpdate = true;
@@ -1980,19 +2247,20 @@ function _buildingShader(mat, cement, facadeWindows){
 _buildingShader(buildingMats.concrete,true,true);
 _buildingShader(buildingMats.apartment,true,true);
 _buildingShader(buildingMats.shop,true,false);
-_buildingShader(buildingMats.house,true,false);
+_buildingShader(buildingMats.house,true,true);
 _buildingShader(buildingMats.glass,false,true);
 _buildingShader(buildingMats.window,false,false);
 // Warm panes are deterministic from their world positions, while remaining opaque.
 buildingMats.window.onBeforeCompile = shader => {
+    shader.uniforms.cityNight=worldNature.night;
     shader.vertexShader='varying vec3 vCSWindowWorld;\n'+shader.vertexShader;
     shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n vec4 csWW=vec4(transformed,1.0);\n #ifdef USE_INSTANCING\n csWW=instanceMatrix*csWW;\n #endif\n vCSWindowWorld=(modelMatrix*csWW).xyz;');
-    shader.fragmentShader='varying vec3 vCSWindowWorld;\nfloat csWH(vec2 p){return fract(sin(dot(p,vec2(91.7,217.3)))*12415.73);}\n'+shader.fragmentShader;
+    shader.fragmentShader='uniform float cityNight;\nvarying vec3 vCSWindowWorld;\nfloat csWH(vec2 p){return fract(sin(dot(p,vec2(91.7,217.3)))*12415.73);}\n'+shader.fragmentShader;
     shader.fragmentShader=shader.fragmentShader.replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
         float csWarm=step(.76,csWH(floor(vCSWindowWorld.xz/5.0)+floor(vCSWindowWorld.y/5.0)));
-        totalEmissiveRadiance+=mix(vec3(.015,.05,.09),vec3(.9,.28,.055),csWarm)*.58;`);
+        totalEmissiveRadiance+=mix(vec3(.006,.018,.035),vec3(1.0,.30,.055),csWarm)*(.10+cityNight*2.5);`);
 };
-buildingMats.window.customProgramCacheKey=()=> 'city-strike-opaque-window-v2'; buildingMats.window.needsUpdate=true;
+buildingMats.window.customProgramCacheKey=()=> 'city-strike-opaque-window-v3'; buildingMats.window.needsUpdate=true;
 
 function _buildingMat(kind){ return buildingMats[kind] || buildingMats.concrete; }
 function _partKey(kind, mat, geo){ return kind+'|'+mat.uuid+'|'+geo.uuid; }
@@ -2066,14 +2334,14 @@ function createSuburbRow(cx,cz,q){
     const roadX=city.x-r+Math.round((cx-(city.x-r))/CFG.blockSize)*CFG.blockSize;
     const roadZ=city.z-r+Math.round((cz-(city.z-r))/CFG.blockSize)*CFG.blockSize;
     const alongX=Math.abs(cz-roadZ)<Math.abs(cx-roadX);
-    const n=2+((q*100)%3|0); // 2-4 homes
+    const n=2; // paired homes let nearly every outer block receive a residential frontage
     const setback=26+Math.random()*8, spacing=25;
     if(alongX){const side=Math.sign(cz-roadZ)||1,fz=roadZ+side*setback;
-        for(let i=0;i<n;i++){const hx=cx+(i-(n-1)/2)*spacing;createSuburbHouse(hx,fz+(Math.random()-.5)*6,false);}}
+        for(let i=0;i<n;i++){const hx=cx+(i-(n-1)/2)*spacing;createSuburbHouse(hx,fz+(Math.random()-.5)*6,false,i===0);}}
     else{const side=Math.sign(cx-roadX)||1,fx=roadX+side*setback;
-        for(let i=0;i<n;i++){const hz=cz+(i-(n-1)/2)*spacing;createSuburbHouse(fx+(Math.random()-.5)*6,hz,false);}}
+        for(let i=0;i<n;i++){const hz=cz+(i-(n-1)/2)*spacing;createSuburbHouse(fx+(Math.random()-.5)*6,hz,false,i===0);}}
 }
-function createSuburbHouse(x,z,isSmallTown=false){
+function createSuburbHouse(x,z,isSmallTown=false,plantFrontTree=false){
     const w=12+Math.random()*5,d=11+Math.random()*5,h=7.5+Math.random()*3.5,rot=isSmallTown?Math.floor(Math.random()*4)*Math.PI*.5:_nearestStreetFacing(x,z);
     const rec=_newBuilding(x,z,w,d,h,'house',0xd2bea0,'house',{resistance:.25,rot});if(!rec)return null;_surface(x,z,w+9,d+9,'lawn',rot);
     _queuePart(rec,'body',x,rec.groundY+h*.5,z,w,h,d,rot,'house');_queuePart(rec,'accessory',x,rec.groundY+h,z,w*1.14,3.4,d*1.16,rot,'roof',BUILDING_GABLE_GEO);
@@ -2082,7 +2350,8 @@ function createSuburbHouse(x,z,isSmallTown=false){
     const toRoad=Math.abs(fx)?Math.abs(roadX-x):Math.abs(roadZ-z),driveLen=Math.max(3,toRoad-d*.5+CFG.roadWidth*.5),driveW=3.5;
     _surface(x+fx*(d*.5+driveLen*.5),z+fz*(d*.5+driveLen*.5),driveW,driveLen,'concrete',rot);
     // Place the shed wholly beyond the rear wall, leaving a larger usable backyard.
-    _queuePart(rec,'accessory',x-fx*(d*.5+4.2),rec.groundY+1.1,z-fz*(d*.5+4.2),2.6,2.2,3.0,rot,'roof');_houseFence(rec,rot,driveW);return rec;
+    _queuePart(rec,'accessory',x-fx*(d*.5+4.2),rec.groundY+1.1,z-fz*(d*.5+4.2),2.6,2.2,3.0,rot,'roof');_houseFence(rec,rot,driveW);
+    if(plantFrontTree){const side=Math.random()<.5?-1:1,tx=x+Math.cos(rot)*side*(w*.5+5.5)-fx*2,tz=z-Math.sin(rot)*side*(w*.5+5.5)-fz*2;if(!pointIsBlocked(tx,tz,3.6)&&roadClearAt(tx,tz,4.5))createStreetTree(tx,tz,.72+Math.random()*.38);}return rec;
 }
 function createCommercialBuilding(x,z,type='store'){
     const defs={apartment:[44+Math.random()*12,38+Math.random()*12,64+Math.random()*42,'apartment'],hotel:[54+Math.random()*16,42+Math.random()*16,74+Math.random()*48,'apartment'],store:[36+Math.random()*16,31+Math.random()*14,10+Math.random()*6,'shop'],gas:[30+Math.random()*8,24+Math.random()*7,7+Math.random()*3,'shop']};
@@ -2095,7 +2364,9 @@ function createCommercialBuilding(x,z,type='store'){
 }
 function createLocalCity(city){
     CITY_RECORDS.push({id:city.id,name:city.name,x:city.x,z:city.z,radius:CFG.cityRadius});const previous=buildingRender.activeCityId;buildingRender.activeCityId=city.id;
-    const bs=CFG.blockSize,r=CFG.roadZoneRadius;const lots=[];for(let lx=-r;lx<r;lx+=bs)for(let lz=-r;lz<r;lz+=bs)lots.push({lx,lz,key:hash2(Math.round(lx),Math.round(lz))});lots.sort((a,b)=>a.key-b.key);for(const {lx,lz} of lots){const cx=city.x+lx+bs*.5,cz=city.z+lz+bs*.5,dist=Math.hypot(lx+bs*.5,lz+bs*.5);if(dist>CFG.cityRadius-bs*.22)continue;const hash=((Math.imul((lx/bs)|0,73856093)^Math.imul((lz/bs)|0,19349663)^Math.imul(city.x|0,83492791))>>>0)%100;if(hash>43)continue;const q=(hash%37)/37;if(dist<CFG.downtownRadius){if(q<.16)createCommercialBuilding(cx,cz,'hotel');else if(q<.43)createCommercialBuilding(cx,cz,'apartment');else if(q<.55)createCommercialBuilding(cx,cz,'store');else createDowntownBuilding(cx,cz);}else if(dist<CFG.innerUrbanRadius){if(q<.22)createCommercialBuilding(cx,cz,'apartment');else if(q<.38)createCommercialBuilding(cx,cz,'store');else if(q<.45)createCommercialBuilding(cx,cz,'gas');else createMediumRise(cx,cz);}else if(dist<CFG.mixedUrbanRadius){if(q<.15)createCommercialBuilding(cx,cz,'store');else if(q<.21)createCommercialBuilding(cx,cz,'gas');else if(q<.70){createSuburbHouse(cx-bs*.19,cz-bs*.17);if(q>.38)createSuburbHouse(cx+bs*.19,cz+bs*.17);}else createMediumRise(cx,cz);}else if(q<.07)createCommercialBuilding(cx,cz,q<.03?'gas':'store');else createSuburbRow(cx,cz,q);}
+    const bs=CFG.blockSize,r=CFG.roadZoneRadius,lots=[];for(let lx=-r;lx<r;lx+=bs)for(let lz=-r;lz<r;lz+=bs){const dist=Math.hypot(lx+bs*.5,lz+bs*.5);lots.push({lx,lz,dist,key:hash2(Math.round(lx),Math.round(lz))});}
+    // Build the residential edge first so the suburban grid is never starved by central towers.
+    lots.sort((a,b)=>b.dist-a.dist||a.key-b.key);for(const {lx,lz,dist} of lots){const cx=city.x+lx+bs*.5,cz=city.z+lz+bs*.5;if(dist>CFG.cityRadius-bs*.22)continue;const hash=((Math.imul((lx/bs)|0,73856093)^Math.imul((lz/bs)|0,19349663)^Math.imul(city.x|0,83492791))>>>0)%100;const keep=dist>CFG.mixedUrbanRadius?93:43;if(hash>keep)continue;const q=(hash%37)/37;if(dist<CFG.downtownRadius){if(q<.16)createCommercialBuilding(cx,cz,'hotel');else if(q<.43)createCommercialBuilding(cx,cz,'apartment');else if(q<.55)createCommercialBuilding(cx,cz,'store');else createDowntownBuilding(cx,cz);}else if(dist<CFG.innerUrbanRadius){if(q<.22)createCommercialBuilding(cx,cz,'apartment');else if(q<.38)createCommercialBuilding(cx,cz,'store');else if(q<.45)createCommercialBuilding(cx,cz,'gas');else createMediumRise(cx,cz);}else if(dist<CFG.mixedUrbanRadius){if(q<.15)createCommercialBuilding(cx,cz,'store');else if(q<.21)createCommercialBuilding(cx,cz,'gas');else if(q<.70){createSuburbHouse(cx-bs*.19,cz-bs*.17,false,true);if(q>.38)createSuburbHouse(cx+bs*.19,cz+bs*.17,false,false);}else createMediumRise(cx,cz);}else if(q<.07)createCommercialBuilding(cx,cz,q<.03?'gas':'store');else createSuburbRow(cx,cz,q);}
     buildingRender.activeCityId=previous;
 }
 function createTown(cx,cz,index,kind='small'){
@@ -2109,7 +2380,7 @@ function createTown(cx,cz,index,kind='small'){
     // House rings along the cross-street grid; large towns get two rings.
     const rings=large?[180,420,680]:[150,300];
     for(let ri=0;ri<rings.length;ri++){const r=rings[ri],n=large?12:8;
-        for(let i=0;i<n&&buildingRender.activeTownCount<quota;i++){const a=i/n*Math.PI*2+ri*.4;createSuburbHouse(cx+Math.cos(a)*r,cz+Math.sin(a)*r,true);}
+        for(let i=0;i<n&&buildingRender.activeTownCount<quota;i++){const a=i/n*Math.PI*2+ri*.4;createSuburbHouse(cx+Math.cos(a)*r,cz+Math.sin(a)*r,true,i%2===0);}
     }
     if(buildingRender.activeTownCount<quota)createCommercialBuilding(cx+rad*.55,cz,'store');
     if(buildingRender.activeTownCount<quota)createCommercialBuilding(cx-rad*.55,cz,'gas');
@@ -2119,9 +2390,9 @@ function createTown(cx,cz,index,kind='small'){
 function seedUrbanTrees(){
     // Trees line both sides of every street: walk the road grid and place
     // rows at regular intervals with a small setback from the carriageway.
-    const treeSpacing = VERY_LOW_MEM?180:DECENT_GPU?72:120, parkCount = VERY_LOW_MEM?3:DECENT_GPU?10:6;
+    const treeSpacing=VERY_LOW_MEM?300:DECENT_GPU?105:220,parkCount=VERY_LOW_MEM?3:DECENT_GPU?10:6;
     for(const city of CITY_CENTERS){
-        const bs=CFG.blockSize,r=CFG.roadZoneRadius,off=CFG.roadWidth*.5+5;
+        const bs=CFG.blockSize,r=CFG.roadZoneRadius,off=CFG.roadWidth*.5+10;
         for(let k=-r;k<=r;k+=bs){const extent=Math.sqrt(Math.max(0,CFG.cityRadius**2-k*k));
             for(let s=-extent;s<extent;s+=treeSpacing){const j=Math.round((s+extent)/treeSpacing);
                 const side=(j%2?1:-1);
@@ -2130,23 +2401,23 @@ function seedUrbanTrees(){
                 for(const [tx,tz] of [[ax,az],[bx,bz]]){
                     const d=Math.hypot(tx-city.x,tz-city.z);
                     if(d<CFG.downtownRadius*.7||d>CFG.cityRadius-120)continue;
-                    if(!pointIsBlocked(tx,tz,2.4)&&roadClearAt(tx,tz,2.4))createStreetTree(tx,tz,.82+Math.random()*.5);
+                    if(!pointIsBlocked(tx,tz,3.5)&&roadClearAt(tx,tz,4.5))createStreetTree(tx,tz,.82+Math.random()*.5);
                 }}
         }
         // Small parks: dense clumps inside the mixed-use ring.
         for(let p=0;p<parkCount;p++){const a=hash2(p*7+3,(city.x|0)+1)*6.283,rr=CFG.innerUrbanRadius+hash2(p*13+1,(city.z|0)+1)*(CFG.suburbRadius-CFG.innerUrbanRadius);
             const px=city.x+Math.cos(a)*rr,pz=city.z+Math.sin(a)*rr;
-            for(let t=0;t<14;t++){const tx=px+(Math.random()-.5)*90,tz=pz+(Math.random()-.5)*90;if(!pointIsBlocked(tx,tz,2.4)&&roadClearAt(tx,tz,2.4))createStreetTree(tx,tz,.8+Math.random()*.7);}}
+            for(let t=0;t<14;t++){const tx=px+(Math.random()-.5)*90,tz=pz+(Math.random()-.5)*90;if(!pointIsBlocked(tx,tz,3.5)&&roadClearAt(tx,tz,4.5))createStreetTree(tx,tz,.8+Math.random()*.7);}}
     }
 }
 // ─── STREETLIGHT POLES (knock over in blasts) ───
-const STREETLIGHT_CAP = VERY_LOW_MEM?2400:DECENT_GPU?74000:15000;
+const STREETLIGHT_CAP=VERY_LOW_MEM?3200:DECENT_GPU?36000:24000;
 const streetPoles=[]; let streetlightMesh=null, streetlightFallenMesh=null;
 let streetlightFinalized=false;
 function createStreetLights(){
     if(streetlightFinalized)return; streetlightFinalized=true;
     const poleMat=makeEfficientMaterial({color:0x3c4248,roughness:.6,metalness:.55,envMapIntensity:.9});
-    const lampMat=makeEfficientMaterial({color:0xfff2c8,emissive:0xffdf90,emissiveIntensity:1.15,roughness:.4});
+    const lampMat=makeEfficientMaterial({color:0xfff2c8,emissive:0xffdf90,emissiveIntensity:.08,roughness:.4});cityLightMaterials.push({material:lampMat,day:.08,night:5.2});
     const pole=new THREE.CylinderGeometry(.085,.12,7.4,6).translate(0,3.7,0).toNonIndexed();
     const arm=new THREE.BoxGeometry(1.5,.09,.09).translate(.72,7.45,0).toNonIndexed();
     const head=new THREE.BoxGeometry(.5,.16,.3).translate(1.45,7.35,0).toNonIndexed();
@@ -2158,19 +2429,21 @@ function createStreetLights(){
     for(let i=0;i<STREETLIGHT_CAP;i++){streetlightMesh.setMatrixAt(i,forestHiddenMatrix);streetlightFallenMesh.setMatrixAt(i,forestHiddenMatrix);}
     scene.add(streetlightMesh);scene.add(streetlightFallenMesh);
     const _d=new THREE.Object3D();
-    function addPole(x,z,rotY){
-        if(streetPoles.length>=STREETLIGHT_CAP)return;
+    function addPole(x,z,rotY,limit=STREETLIGHT_CAP){
+        if(streetPoles.length>=STREETLIGHT_CAP||streetPoles.length>=limit)return;
         const y=terrainHeightAt(x,z);
         _d.position.set(x,y,z);_d.rotation.set(0,rotY,0);_d.scale.setScalar(1);_d.updateMatrix();
         const idx=streetPoles.length;streetlightMesh.setMatrixAt(idx,_d.matrix);
         streetPoles.push({x,y,z,rotY,idx,fallen:false});
     }
-    // Major streets get poles every 130 m alternating sides; towns line their cross.
-    for(const city of CITY_CENTERS){const bs=CFG.blockSize,r=CFG.roadZoneRadius;
+    // Every other block gets a pole; this covers every suburban district without tens of thousands of redundant instances.
+    const poleSpacing=VERY_LOW_MEM?720:DECENT_GPU?400:560;
+    const cityLampBudget=Math.floor((STREETLIGHT_CAP-1200)/CITY_CENTERS.length);
+    for(let cityIndex=0;cityIndex<CITY_CENTERS.length;cityIndex++){const city=CITY_CENTERS[cityIndex],cityLimit=(cityIndex+1)*cityLampBudget,bs=CFG.blockSize,r=CFG.roadZoneRadius;
         for(let k=-r;k<=r;k+=bs){const extent=Math.sqrt(Math.max(0,CFG.cityRadius**2-k*k));
-            for(let s=-extent+90;s<extent;s+=130){const j=Math.round((s+extent)/130),side=(j%2?1:-1),off=CFG.roadWidth*.5+3.5;
-                addPole(city.x+s,city.z+k+side*off,side>0?-Math.PI/2:Math.PI/2);
-                addPole(city.x+k+side*off,city.z+s,side>0?0:Math.PI);}}
+            for(let s=-extent+Math.min(110,poleSpacing*.5);s<extent;s+=poleSpacing){const j=Math.round((s+extent)/poleSpacing),side=(j%2?1:-1),off=CFG.roadWidth*.5+8;
+                addPole(city.x+s,city.z+k+side*off,side>0?-Math.PI/2:Math.PI/2,cityLimit);
+                addPole(city.x+k+side*off,city.z+s,side>0?0:Math.PI,cityLimit);}}
     }
     for(const t of TOWN_CENTERS){const ext=(t.radius||CFG.townRadius)*.5;
         for(let s=-ext;s<=ext;s+=120){addPole(t.x+s,t.z+42,0);addPole(t.x+42,t.z+s,-Math.PI/2);}
@@ -2454,18 +2727,11 @@ function damageBuilding(rec,hitPos,radius,force=1){
         if(!cell.charred){
             // First hit fractures and chars but usually leaves the wall standing.
             const pc=THREE.MathUtils.clamp(sev,.05,.95);
-            // Keep only a sparse handful of larger wall faces standing. Most
-            // panels lose support and collapse so damage never reads as a
-            // regular upright grid of rectangular slabs.
-            const keepStanding = pc * (cell.level===0 ? .18 : .10);
-            if(Math.random()<keepStanding){
+            if(Math.random()<pc*.82){
                 charCell(cell,rec);
                 if(realismFX&&Math.random()<.5)realismFX.fracture({x:cell.x,y:cell.y+cell.h*.2,z:cell.z},hitPos,2+((Math.random()*3)|0),cell.kinds,7+force*4,.7);
                 continue;
             }
-            // The remaining damaged faces break away immediately.
-            const breakChance=THREE.MathUtils.clamp(.42+sev*.78+(force-.8)*.08,.35,.98);
-            if(Math.random()<breakChance){destroyCell(cell,rec,hitPos,radius,force,false);removed++;continue;}
         }
         // A second strong hit, or a direct hit, destroys the panel outright.
         const dc=THREE.MathUtils.clamp((cell.charred?.35:.12)+sev*.78,.05,.985);
@@ -2526,7 +2792,7 @@ function damageBuildingsInRadius(pos,radius){
 function getShootTargets(camPos){
     _shootTargets.length=0;const R=420,R2=R*R;for(const n of npcs)if(!n.userData.dead&&n.position.distanceToSquared(camPos)<R2)_shootTargets.push(n);for(const c of cars)if(c.position.distanceToSquared(camPos)<R2)_shootTargets.push(c);for(const h of helicopters)if(h!==currentVehicle&&h.position.distanceToSquared(camPos)<R2)_shootTargets.push(h);for(const j of jets)if(j!==currentVehicle&&j.position.distanceToSquared(camPos)<R2)_shootTargets.push(j);for(const b of buildings){const dx=b.x-camPos.x,dz=b.z-camPos.z;if(dx*dx+dz*dz>=R2)continue;if(!b.panelized&&b.originalMesh)_shootTargets.push(b.originalMesh);else if(b.panelized)for(const cell of b.cells||[])if(cell.alive&&cell.proxy)_shootTargets.push(cell.proxy);}return _shootTargets;
 }
-function createCity(){for(const city of CITY_CENTERS)createLocalCity(city);generateTownCenters();seedUrbanTrees();createStreetLights();createForests();finalizeTreeInstances();for(let i=0;i<CFG.farmCount;i++){const a=Math.random()*Math.PI*2,r=8000+Math.random()*40000;createFarm(Math.cos(a)*r,Math.sin(a)*r);}for(let i=0;i<140;i++){const a=Math.random()*Math.PI*2,r=48000+Math.random()*26000;createHill(Math.cos(a)*r,Math.sin(a)*r,60+Math.random()*160);}finalizeBuildingInstances();}
+function createCity(){for(const city of CITY_CENTERS)createLocalCity(city);generateTownCenters();seedUrbanTrees();createStreetLights();createForests();finalizeTreeInstances();for(let i=0;i<CFG.farmCount;i++){const a=Math.random()*Math.PI*2,r=8000+Math.random()*(CFG.worldSize*.43-8000);createFarm(Math.cos(a)*r,Math.sin(a)*r);}for(let i=0;i<140;i++){const a=Math.random()*Math.PI*2,r=48000+Math.random()*26000;createHill(Math.cos(a)*r,Math.sin(a)*r,60+Math.random()*160);}finalizeBuildingInstances();}
 
 
 // ─── PANEL DAMAGE ───
@@ -2735,9 +3001,23 @@ function createSmallTown(cx, cz){
 const forestTrees=[];
 const forestClusters=[];
 const TREE_SPECIES_COUNT = VERY_LOW_MEM ? 2 : 4;
+function _treeSwayShader(mat,leaf=false){
+    mat.onBeforeCompile=s=>{s.uniforms.natureTime=worldNature.time;s.uniforms.treeSway=worldNature.treeSway;
+        s.vertexShader=s.vertexShader.replace('#include <common>','#include <common>\nuniform float natureTime;uniform float treeSway;').replace('#include <begin_vertex>',`#include <begin_vertex>
+            vec3 csTreeAnchor=(modelMatrix*vec4(0.,0.,0.,1.)).xyz;
+            #ifdef USE_INSTANCING
+            csTreeAnchor=(modelMatrix*instanceMatrix*vec4(0.,0.,0.,1.)).xyz;
+            #endif
+            float csNear=1.-smoothstep(500.,2300.,distance(cameraPosition,csTreeAnchor));
+            float csHeight=clamp(position.y/${leaf?'11.':'9.'},0.,1.);
+            float csWave=sin(natureTime*1.9+csTreeAnchor.x*.11+csTreeAnchor.z*.07);
+            transformed.x+=csWave*treeSway*csNear*csHeight*${leaf?'.72':'.16'};
+            transformed.z+=cos(natureTime*1.43+csTreeAnchor.x*.08)*treeSway*csNear*csHeight*${leaf?'.58':'.12'};`);
+    };mat.customProgramCacheKey=()=>`city-strike-tree-sway-${leaf?'leaf':'trunk'}`;mat.needsUpdate=true;
+}
 function _treeMatsPair(trunkColor,leafColor){
-    return { trunk:makeEfficientMaterial({color:trunkColor,roughness:.95,metalness:0}),
-             leaf:makeEfficientMaterial({color:leafColor,roughness:.98,metalness:0,flatShading:true,envMapIntensity:.18}) };
+    const pair={trunk:makeEfficientMaterial({color:trunkColor,roughness:.95,metalness:0}),leaf:makeEfficientMaterial({color:leafColor,roughness:.98,metalness:0,flatShading:true,envMapIntensity:.18})};
+    _treeSwayShader(pair.trunk,false);_treeSwayShader(pair.leaf,true);return pair;
 }
 // Oak, pine, birch, maple — distinct silhouettes, bark and crown colour.
 const TREE_SPECIES_MATS=[
@@ -2784,6 +3064,7 @@ function _buildBirchFarGeo(){const trunk=new THREE.CylinderGeometry(.1,.2,8,4).t
 function _buildMapleFarGeo(){const trunk=new THREE.CylinderGeometry(.2,.42,5.5,4).translate(0,2.8,0).toNonIndexed(),crown=new THREE.IcosahedronGeometry(1,0).scale(3.3,3.1,3).translate(0,6.9,0),g=mergeGeometries([trunk,crown],true);trunk.dispose();crown.dispose();return g;}
 const TREE_FAR_GEOS=[_buildOakFarGeo(),_buildPineFarGeo(),_buildBirchFarGeo(),_buildMapleFarGeo()].slice(0,TREE_SPECIES_COUNT);
 const TREE_FAR_GEO=TREE_FAR_GEOS[0];
+const FOREST_CHUNK_SIZE=VERY_LOW_MEM?1100:1600;
 const forestChunks=new Map(),forestHiddenMatrix=new THREE.Matrix4().makeScale(0,0,0),forestLastPosition=new THREE.Vector3(Infinity,Infinity,Infinity);
 let forestRoadStamp=-1,forestRenderDistance=0;
 let treeInstances=null;
@@ -2797,27 +3078,28 @@ function treeSpeciesFor(x,z,urban=false){
 function makeForestTree(x,z,scale=1,urban=false){
     const proxy=new THREE.Group();
     proxy.position.set(x,terrainHeightAt(x,z),z);
-    const species=treeSpeciesFor(x,z,urban);
-    proxy.userData={tree:true,dead:false,stump:false,health:1,baseScale:scale,instanceId:forestTrees.length,urban:!!urban,species,
+    const species=treeSpeciesFor(x,z,urban),clearOfRoad=roadClearAt(x,z,urban?4.5:8);
+    proxy.userData={tree:true,dead:!clearOfRoad,stump:false,health:1,baseScale:scale,instanceId:forestTrees.length,urban:!!urban,species,
         scaleJitter:.82+hash2(Math.floor(x),Math.floor(z)+999)*.36};
     forestTrees.push(proxy); return proxy;
 }
 function finalizeTreeInstances(){
     if(treeInstances||!forestTrees.length)return;
     treeInstances=new THREE.Group();treeInstances.name='Chunked forest';scene.add(treeInstances);
-    for(const t of forestTrees){const x=Math.floor(t.position.x/640),z=Math.floor(t.position.z/640),key=x+':'+z;
-        if(!forestChunks.has(key))forestChunks.set(key,{x:x*640+320,z:z*640+320,trees:[]});
+    for(const t of forestTrees){const x=Math.floor(t.position.x/FOREST_CHUNK_SIZE),z=Math.floor(t.position.z/FOREST_CHUNK_SIZE),key=x+':'+z;
+        if(!forestChunks.has(key))forestChunks.set(key,{x:x*FOREST_CHUNK_SIZE+FOREST_CHUNK_SIZE*.5,z:z*FOREST_CHUNK_SIZE+FOREST_CHUNK_SIZE*.5,trees:[]});
         const chunk=forestChunks.get(key);t.userData.chunkKey=key;t.userData.chunkIndex=chunk.trees.length;chunk.trees.push(t);
     }
     const q=new THREE.Quaternion(),sc=new THREE.Vector3(),color=new THREE.Color();
     for(const chunk of forestChunks.values()){
-        chunk.near=[];chunk.far=[];chunk.counters=new Array(TREE_SPECIES_COUNT).fill(0);
+        chunk.near=[];chunk.far=[];chunk.counters=new Array(TREE_SPECIES_COUNT).fill(0);chunk.speciesCounts=new Array(TREE_SPECIES_COUNT).fill(0);for(const t of chunk.trees)chunk.speciesCounts[t.userData.species]++;
         for(let sp=0;sp<TREE_SPECIES_COUNT;sp++){
-            const nm=new THREE.InstancedMesh(TREE_GEOS[sp],[TREE_SPECIES_MATS[sp].trunk,TREE_SPECIES_MATS[sp].leaf],chunk.trees.length);
-            const fm=new THREE.InstancedMesh(TREE_FAR_GEOS[sp],[TREE_SPECIES_MATS[sp].trunk,TREE_SPECIES_MATS[sp].leaf],chunk.trees.length);
+            const count=Math.max(1,chunk.speciesCounts[sp]);
+            const nm=new THREE.InstancedMesh(TREE_GEOS[sp],[TREE_SPECIES_MATS[sp].trunk,TREE_SPECIES_MATS[sp].leaf],count);
+            const fm=new THREE.InstancedMesh(TREE_FAR_GEOS[sp],[TREE_SPECIES_MATS[sp].trunk,TREE_SPECIES_MATS[sp].leaf],count);
             nm.instanceMatrix.setUsage(THREE.DynamicDrawUsage);fm.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
             nm.visible=false;fm.visible=false;treeInstances.add(nm);treeInstances.add(fm);chunk.near.push(nm);chunk.far.push(fm);
-            for(let i=0;i<chunk.trees.length;i++){nm.setMatrixAt(i,forestHiddenMatrix);fm.setMatrixAt(i,forestHiddenMatrix);}
+            for(let i=0;i<count;i++){nm.setMatrixAt(i,forestHiddenMatrix);fm.setMatrixAt(i,forestHiddenMatrix);}
         }
         for(const t of chunk.trees){const u=t.userData,s=u.baseScale,v=hash2(Math.floor(t.position.x),Math.floor(t.position.z));
             q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP,v*Math.PI*2);sc.setScalar(s);
@@ -2861,7 +3143,7 @@ function updateNatureGrass(p){
     let changed=false;
     for(let n=0;n<worldNature.grassBudget&&grass.jobs.length;n++){
         const job=grass.jobs.shift(),r=hash2(job.x,job.z),x=(job.x+.15+r*.7)*GRASS_CELL,z=(job.z+.15+hash2(job.z+71,job.x)*.7)*GRASS_CELL,y=terrainHeightAt(x,z);
-        const clear=y<1050&&roadClearAt(x,z,2.0)&&naturePointIsClear(x,z,1.1)&&(natureSettlementMask(x,z)<.1||naturePathDistance(x,z)>6)&&Math.abs(terrainHeightAt(x+2,z)-y)<1&&Math.abs(terrainHeightAt(x,z+2)-y)<1;
+        const clear=y<1050&&naturePointIsClear(x,z,3)&&(natureSettlementMask(x,z)<.1||naturePathDistance(x,z)>6)&&Math.abs(terrainHeightAt(x+2,z)-y)<1&&Math.abs(terrainHeightAt(x,z+2)-y)<1;
         if(clear){grass.dummy.position.set(x,y-.04,z);grass.dummy.rotation.set(0,r*Math.PI*2,0);grass.dummy.scale.set(.8+r*.7,.65+r*.7,.8+r*.7);grass.dummy.updateMatrix();grass.mesh.setMatrixAt(job.index,grass.dummy.matrix);}else grass.mesh.setMatrixAt(job.index,forestHiddenMatrix);
         grass.keys[job.index]=job.key;changed=true;
     }
@@ -2883,24 +3165,23 @@ function createForestCluster(cx,cz,radius){
         group.push(makeForestTree(x,z,scale));
     }
     // A few stragglers on the woodland edge for an irregular silhouette.
-    for(let i=0;i<n*.18;i++){const a=Math.random()*6.283,rr=radius*(.85+Math.random()*.35);
+    for(let i=0;i<n*.24;i++){const a=Math.random()*6.283,rr=radius*(.85+Math.random()*.35);
         group.push(makeForestTree(cx+Math.cos(a)*rr,cz+Math.sin(a)*rr,.45+Math.random()*1.1));}
     forestClusters.push({x:cx,z:cz,r:radius,trees:group,blobs,seed});
 }
 function createForests(){
-    // Woodlands blanket the whole (much larger) landmass, not just a ring
-    // around the start city; keep them clear of cities and towns.
+    // Every cluster has 4.5x the former footprint (radius scaled by sqrt(4.5)) and the count is doubled.
+    // Exclusions grow with the woodland radius, keeping city and town streets forest-free.
     let made=0,tries=0;
-    while(made<CFG.forestClusterCount&&tries++<4000){
-        const a=Math.random()*Math.PI*2, r=2600+Math.random()*50000;
-        const x=Math.cos(a)*r, z=Math.sin(a)*r;
-        if(Math.hypot(x,z)>57000) continue;
+    while(made<CFG.forestClusterCount&&tries++<9000){
+        const radius=(390+Math.random()*720)*FOREST_RADIUS_MULTIPLIER;
+        const a=Math.random()*Math.PI*2,r=2600+Math.random()*(CFG.worldSize*.43-2600);
+        const x=Math.cos(a)*r,z=Math.sin(a)*r;
+        if(Math.hypot(x,z)>CFG.worldSize*.45-radius*.35)continue;
         let bad=false;
-        for(const c of CITY_CENTERS) if(Math.hypot(x-c.x,z-c.z)<CFG.cityRadius+1600){bad=true;break;}
-        if(!bad)for(const t of TOWN_CENTERS) if(Math.hypot(x-t.x,z-t.z)<(t.radius||CFG.townRadius)+900){bad=true;break;}
-        if(bad)continue;
-        createForestCluster(x,z,200+Math.random()*380);
-        made++;
+        for(const c of CITY_CENTERS)if(Math.hypot(x-c.x,z-c.z)<CFG.cityRadius+radius+420){bad=true;break;}
+        if(!bad)for(const t of TOWN_CENTERS)if(Math.hypot(x-t.x,z-t.z)<(t.radius||CFG.townRadius)+radius*.82+300){bad=true;break;}
+        if(bad)continue;createForestCluster(x,z,radius);made++;
     }
 }
 function createStreetTree(x,z,scale=1){const t=makeForestTree(x,z,scale,true);t.userData.urban=true;return t;}
@@ -2942,7 +3223,7 @@ function generateTownCenters(){
     while(made<CFG.townCount&&tries++<26000){
         const kind=target(made), large=kind==='large';
         const x=(Math.random()-.5)*(CFG.worldSize-14000),z=(Math.random()-.5)*(CFG.worldSize-14000);
-        let bad=Math.hypot(x,z)>53000;
+        let bad=Math.hypot(x,z)>CFG.worldSize*.43;
         for(const c of CITY_CENTERS)if(Math.hypot(x-c.x,z-c.z)<CFG.cityRadius+(large?2600:2000))bad=true;
         for(const t of TOWN_CENTERS){const minD=(t.kind==='large'||large)?2900:1750;if(Math.hypot(x-t.x,z-t.z)<minD){bad=true;break;}}
         if(bad)continue;
@@ -3103,34 +3384,34 @@ function pickBuildingDestination(){
 
 // Population scaled per settlement: 120 per city, 40 per large town, 10 per small town + 200 dispersed.
 function spawnPopulation(){
-    const scale = VERY_LOW_MEM?0.35:DECENT_GPU?1:0.65;
-    const N=(n)=>Math.round(n*scale);
-    const place=(x,z)=>{if(terrainHeightAt(x,z)>1150)return false;if(pointIsBlocked(x,z,1.4))return false;spawnNPC(false,false,{x,z});return true;};
-    const sideStreet=()=>CFG.roadWidth*.5+2.5+Math.random()*7*(Math.random()<.5?-1:1);
-    for(const city of CITY_CENTERS){
-        const bs=CFG.blockSize,r=CFG.roadZoneRadius,R=CFG.cityRadius;
-        for(let i=0;i<N(120);i++){
-            const k=Math.round((Math.random()*2-1)*r/bs)*bs;
-            const extent=Math.sqrt(Math.max(0,R*R-k*k))-120;
-            const s=(Math.random()*2-1)*extent;
-            if(Math.random()<.5){for(let t=0;t<4;t++)if(place(city.x+s+(Math.random()-.5)*8,city.z+k+sideStreet()))break;}
-            else{for(let t=0;t<4;t++)if(place(city.x+k+sideStreet(),city.z+s+(Math.random()-.5)*8))break;}
+    // Population is allocated by settlement rather than a global random pool so every mapped place is alive.
+    const totals={city:200,town:20,farm:2};
+    const kindFor=(i,seed)=>{const k=(i+seed)%20;return {enemy:k<3,cop:k===3};};
+    const place=(x,z,kind)=>{
+        for(let attempt=0;attempt<8;attempt++){
+            const spread=attempt*3.5,px=x+(Math.random()-.5)*spread,pz=z+(Math.random()-.5)*spread;
+            if(terrainHeightAt(px,pz)>1150||pointIsBlocked(px,pz,1.35))continue;
+            spawnNPC(kind.cop,kind.enemy,{x:px,z:pz});return true;
         }
-    }
-    for(const t of TOWN_CENTERS){
-        const n=t.kind==='large'?N(40):N(10),ext=(t.radius||CFG.townRadius)*.5;
-        for(let i=0;i<n;i++){
-            const u=(Math.random()*2-1)*ext,o=10+Math.random()*8;
-            if(Math.random()<.5)place(t.x+u,t.z+o*(Math.random()<.5?1:-1));
-            else place(t.x+o*(Math.random()<.5?1:-1),t.z+u);
-        }
-    }
-    for(let i=0;i<N(200);i++){
-        let x,z;
-        if(roadPatrolWaypoints.length&&Math.random()<.7){const wp=roadPatrolWaypoints[(Math.random()*roadPatrolWaypoints.length)|0];x=wp.x+(Math.random()-.5)*24;z=wp.z+(Math.random()-.5)*24;}
-        else{const a=Math.random()*6.283,rr=CFG.suburbRadius+Math.random()*(CFG.mountainInner-CFG.suburbRadius-300);x=Math.cos(a)*rr;z=Math.sin(a)*rr;}
-        for(let t=0;t<5;t++)if(place(x+(Math.random()-.5)*10,z+(Math.random()-.5)*10))break;
-    }
+        return false;
+    };
+    const cityPoint=city=>{
+        const bs=CFG.blockSize,R=CFG.cityRadius,near=Math.random()<.34,range=near?Math.min(1150,R*.28):R-300;
+        const k=Math.round((Math.random()*2-1)*range/bs)*bs;
+        const extent=Math.sqrt(Math.max(0,R*R-k*k))-145,s=(Math.random()*2-1)*Math.max(40,Math.min(extent,range));
+        const off=CFG.roadWidth*.5+7+Math.random()*8;
+        return Math.random()<.5?{x:city.x+s,z:city.z+k+(Math.random()<.5?-off:off)}:{x:city.x+k+(Math.random()<.5?-off:off),z:city.z+s};
+    };
+    const townPoint=t=>{const ext=(t.radius||CFG.townRadius)*.47,u=(Math.random()*2-1)*ext,off=CFG.roadWidth*.5+7;return Math.random()<.5?{x:t.x+u,z:t.z+30+(Math.random()<.5?-off:off)}:{x:t.x+30+(Math.random()<.5?-off:off),z:t.z+u};};
+    const farmPoint=f=>{const a=Math.random()*Math.PI*2,r=22+Math.random()*34;return{x:f.x+Math.cos(a)*r,z:f.z+Math.sin(a)*r};};
+    const fill=(count,seed,getPoint)=>{let made=0,tries=0;while(made<count&&tries++<count*22){const kind=kindFor(made,seed),p=getPoint();if(place(p.x,p.z,kind))made++;}
+        // A final road/yard retry preserves the advertised total even if one lot was temporarily blocked.
+        while(made<count){const kind=kindFor(made,seed),p=getPoint();spawnNPC(kind.cop,kind.enemy,{x:p.x,z:p.z});made++;}
+    };
+    for(let i=0;i<CITY_CENTERS.length;i++)fill(totals.city,i*7,()=>cityPoint(CITY_CENTERS[i]));
+    for(let i=0;i<TOWN_CENTERS.length;i++)fill(totals.town,100+i*5,()=>townPoint(TOWN_CENTERS[i]));
+    for(let i=0;i<farmCenters.length;i++)fill(totals.farm,500+i*3,()=>farmPoint(farmCenters[i]));
+    return {cities:CITY_CENTERS.length*totals.city,towns:TOWN_CENTERS.length*totals.town,farms:farmCenters.length*totals.farm,total:npcs.length};
 }
 function spawnNPC(isCop = false, isEnemy = false, pos = null){
     const grp = new THREE.Group();
@@ -3253,10 +3534,28 @@ function spawnCar(){
     grp.userData={type:'car',velocity:0,speed:0,health:80,maxHealth:80,camPos:new THREE.Vector3(0,1.08,.1),steering:0,frontWheels:grp.children.filter(o=>o.userData.frontWheel),ai:{active:true,speed:5+Math.random()*3.5,turnTimer:0},healthBar:null};
     scene.add(grp); cars.push(grp); return grp;
 }
-// ─── DISTANT HIGHWAY TRAFFIC — cars that actually follow road segments ───
-const highwayCars=[];
+// ─── ROAD-GRAPH TRAFFIC — lanes, intersection signals and passing ───
+const highwayCars=[],roadTrafficGraph=new Map();
+function trafficNodeKey(x,z){return Math.round(x/12)+':'+Math.round(z/12);}
+function buildTrafficRoadGraph(){
+    roadTrafficGraph.clear();
+    for(const seg of surfaceWorld.segments){if(seg.trafficDisabled)continue;for(const [x,z,end] of [[seg.ax,seg.az,0],[seg.bx,seg.bz,1]]){const key=trafficNodeKey(x,z);let links=roadTrafficGraph.get(key);if(!links)roadTrafficGraph.set(key,links=[]);links.push({seg,end});}}
+}
+function trafficSignalAllows(h,x,z,now){
+    const city=getNearestCity(x,z);if(city.distance>CFG.cityRadius)return true;
+    const c=city.city,bs=CFG.blockSize,gx=c.x-CFG.roadZoneRadius+Math.round((x-(c.x-CFG.roadZoneRadius))/bs)*bs,gz=c.z-CFG.roadZoneRadius+Math.round((z-(c.z-CFG.roadZoneRadius))/bs)*bs;
+    if(Math.abs(x-gx)>18||Math.abs(z-gz)>18)return true;
+    const dx=h.seg.bx-h.seg.ax,dz=h.seg.bz-h.seg.az,horizontal=Math.abs(dx)>Math.abs(dz),phase=Math.floor(now/4200)%2;
+    return horizontal?phase===0:phase===1;
+}
+function chooseTrafficTurn(h,atX,atZ){
+    const links=roadTrafficGraph.get(trafficNodeKey(atX,atZ))||[];let best=null,bestScore=-Infinity;
+    const incoming=new THREE.Vector2((h.seg.bx-h.seg.ax)*h.dir,(h.seg.bz-h.seg.az)*h.dir).normalize();
+    for(const link of links){if(link.seg===h.seg)continue;const outgoing=new THREE.Vector2((link.seg.bx-link.seg.ax)*(link.end===0?1:-1),(link.seg.bz-link.seg.az)*(link.end===0?1:-1)).normalize();const dot=incoming.dot(outgoing);const score=dot+(Math.random()-.5)*.75;if(score>bestScore){bestScore=score;best={seg:link.seg,dir:link.end===0?1:-1,f:link.end===0?.001:.999};}}
+    return best;
+}
 function spawnHighwayTraffic(count){
-    const segs=surfaceWorld.segments.filter(s=>s.len>260);
+    const segs=surfaceWorld.segments.filter(s=>!s.trafficDisabled&&s.len>260);
     if(!segs.length||!carTemplates.size)return;
     const colors=[...carTemplates.keys()];
     for(let i=0;i<count;i++){
@@ -3264,30 +3563,23 @@ function spawnHighwayTraffic(count){
         const tmpl=carTemplates.get(colors[(Math.random()*colors.length)|0])||carTemplates.values().next().value;
         const grp=tmpl.clone(true);
         grp.scale.setScalar(.9+Math.random()*.25);
-        const h={grp,seg,f:Math.random(),dir:Math.random()<.5?1:-1,speed:13+Math.random()*14};
+        const cruise=13+Math.random()*14,h={grp,seg,f:Math.random(),dir:Math.random()<.5?1:-1,speed:cruise,cruise,lane:Math.random()<.5?-1:1,laneOffset:0,yield:0};
         grp.userData={type:'highwayCar',highway:h};
         scene.add(grp);highwayCars.push(h);
     }
 }
 function updateHighwayTraffic(dt){
-    const segs=surfaceWorld.segments;
+    const now=performance.now();
     for(const h of highwayCars){
-        let seg=h.seg;
-        h.f+=h.dir*h.speed*dt/seg.len;
-        if(h.f>1||h.f<0){
-            const fromEnd=h.f>1;
-            const px=fromEnd?seg.bx:seg.ax, pz=fromEnd?seg.bz:seg.az;
-            let next=null,best=26;
-            for(let i=0;i<segs.length;i++){const s=segs[i];const ex=fromEnd?Math.hypot(s.ax-px,s.az-pz):Math.hypot(s.bx-px,s.bz-pz);if(ex<best){best=ex;next=s;}}
-            if(next){h.seg=next;h.f=fromEnd?.001:.999;seg=next;}
-            else {h.dir*=-1;h.f=THREE.MathUtils.clamp(h.f,.02,.98);}
-        }
-        const dx=seg.bx-seg.ax,dz=seg.bz-seg.az,l=Math.hypot(dx,dz)||1;
-        const x=seg.ax+dx*h.f,z=seg.az+dz*h.f;
-        const nx=-dz/l*h.dir*4.2,nz=dx/l*h.dir*4.2;
-        h.grp.position.set(x+nx,terrainHeightAt(x,z)+.2,z+nz);
-        h.grp.rotation.y=Math.atan2(-dx*h.dir,-dz*h.dir);
-        h.grp.visible=h.grp.position.distanceToSquared(camera.position)<3800*3800;
+        let seg=h.seg,desired=h.cruise;
+        // Car-following and a one-lane overtake when a slow leader is close.
+        for(const other of highwayCars){if(other===h||other.seg!==seg||other.dir!==h.dir)continue;const ahead=(other.f-h.f)*h.dir*seg.len;if(ahead>0&&ahead<42){desired=Math.min(desired,other.speed*Math.max(.55,ahead/30));if(ahead<24&&other.speed<h.cruise*.78)h.lane=-h.lane;}}
+        const dx0=seg.bx-seg.ax,dz0=seg.bz-seg.az,l0=Math.hypot(dx0,dz0)||1,px=seg.ax+dx0*h.f,pz=seg.az+dz0*h.f;
+        if(!trafficSignalAllows(h,px,pz,now))desired=0;
+        h.speed=THREE.MathUtils.damp(h.speed,desired,3.5,dt);h.laneOffset=THREE.MathUtils.damp(h.laneOffset,h.lane*4.2,3.2,dt);h.f+=h.dir*h.speed*dt/seg.len;
+        if(h.f>1||h.f<0){const fromEnd=h.f>1,ex=fromEnd?seg.bx:seg.ax,ez=fromEnd?seg.bz:seg.az,next=chooseTrafficTurn(h,ex,ez);if(next){h.seg=next.seg;h.dir=next.dir;h.f=next.f;seg=next.seg;}else{h.dir*=-1;h.f=THREE.MathUtils.clamp(h.f,.02,.98);}}
+        const dx=seg.bx-seg.ax,dz=seg.bz-seg.az,l=Math.hypot(dx,dz)||1,x=seg.ax+dx*h.f,z=seg.az+dz*h.f,nx=-dz/l*h.dir*h.laneOffset,nz=dx/l*h.dir*h.laneOffset;
+        h.grp.position.set(x+nx,terrainHeightAt(x,z)+.2,z+nz);h.grp.rotation.y=Math.atan2(-dx*h.dir,-dz*h.dir);h.grp.visible=h.grp.position.distanceToSquared(camera.position)<3800*3800;
     }
 }
 function spawnMotorbike(x, z){
@@ -3502,26 +3794,6 @@ function spawnJet(x, z, preset = 'fighter'){
     scene.add(grp); jets.push(grp);
     return grp;
 }
-const JET_CRASH_MPH = 200;
-const JET_CRASH_SPEED = JET_CRASH_MPH * 0.44704;
-function crashJetAt(j, impactPos, impactSpeed){
-    if(!j || !j.parent || j.userData.crashed) return false;
-    j.userData.crashed = true;
-    const crashPos = impactPos.clone ? impactPos.clone() : new THREE.Vector3(impactPos.x,impactPos.y,impactPos.z);
-    const occupied = currentVehicle === j;
-    if(occupied){
-        // Put the player back in the world before removing the aircraft. The
-        // crash itself then applies lethal impact damage at high speed.
-        exitVehicle();
-        if(!isDead) takeDamage(999);
-    }
-    createExplosion(crashPos, 'bomb');
-    playSound('crash');
-    const idx=jets.indexOf(j);
-    if(idx>-1) jets.splice(idx,1);
-    scene.remove(j);
-    return true;
-}
 function updateJetFlight(j, dt){
     if(!controls.isLocked || document.hidden || isDead) return;
     const f=j.userData.flight, baseMax=(JET_PRESETS[j.userData.preset] || JET_PRESETS.fighter).speed;
@@ -3558,7 +3830,7 @@ function updateJetFlight(j, dt){
         f.velocity.addScaledVector(f.right,-f.velocity.dot(f.right)*Math.min(1,.9*h));
         const backwards=f.velocity.dot(f.forward);
         if(backwards<0) f.velocity.addScaledVector(f.forward,-backwards);
-        f.velocity.clampLength(0,baseMax*1.8);
+        f.velocity.clampLength(0,baseMax*(jetBoost?1.10:1.0));
         if(f.onGround){
             if(speed<60 || f.pitch<.035 || lift<9.81) f.velocity.y=0;
             f.velocity.multiplyScalar(Math.exp(-(f.engine<.05?.8:.08)*h));
@@ -3566,11 +3838,6 @@ function updateJetFlight(j, dt){
         f.oldPos.copy(j.position); j.position.addScaledVector(f.velocity,h);
         const collision=aircraftBuildingCollision(j.position,3.5);
         if(collision){
-            const impactSpeed=f.velocity.length();
-            if(impactSpeed >= JET_CRASH_SPEED){
-                crashJetAt(j,j.position,impactSpeed);
-                return;
-            }
             j.position.copy(f.oldPos); f.velocity.set(0,0,0); f.throttle=0; f.engine=0;
             if(crashDamageCooldown<=0){
                 crashDamageCooldown=1; playSound('crash'); takeDamage(15);
@@ -3581,13 +3848,6 @@ function updateJetFlight(j, dt){
         const ground=terrainHeightAt(j.position.x,j.position.z)+.4;
         f.onGround=j.position.y<=ground+.015 && f.velocity.y<=0;
         if(j.position.y<ground){
-            const impactSpeed=f.velocity.length();
-            if(impactSpeed >= JET_CRASH_SPEED){
-                const impactPos=j.position.clone();
-                impactPos.y=ground+0.1;
-                crashJetAt(j,impactPos,impactSpeed);
-                return;
-            }
             if(f.velocity.y < -10 && crashDamageCooldown<=0){crashDamageCooldown=1;playSound('crash');takeDamage(Math.min(45,-f.velocity.y));}
             j.position.y=ground; f.velocity.y=0; f.onGround=true;
         }
@@ -3773,10 +4033,10 @@ function createCityStrikePooledEffects(host) {
         void main(){
             vec2 q = vUv * 2.0 - 1.0;
             float r = length(q);
-            float edge = smoothstep(1.04, .62, r);
+            float edge = 1.0-smoothstep(.62, 1.04, r);
             float n = fbm(q*3.4 + vec2(vSeed*5.1, vSeed*1.7));
             float broken = smoothstep(.16, .90, n + (1.0-r)*.42);
-            float core = smoothstep(1.12, .12, r) * (.64 + .36*n);
+            float core = (1.0-smoothstep(.12, 1.12, r)) * (.64 + .36*n);
             float a = edge * broken * core * vAlpha;
             if(a < .006) discard;
             gl_FragColor = vec4(vTint * (0.74 + .26*n), a);
@@ -3957,16 +4217,14 @@ function createCityStrikePooledEffects(host) {
         const scale = nuke ? 3 : moab ? 1.8 : big ? 1.3 : 1;
         const mul = host.veryLowEnd ? .30 : lowEnd ? .55 : 1;
         const groundY = host.getTerrainHeight ? host.getTerrainHeight(pos.x, pos.z) : pos.y;
-        if (host.playSound) host.playSound(big ? 'explosionBig' : 'explosion');
+        if(host.playSound)host.playSound(big?'explosionBig':'explosion',spatialAudioMix(pos));
         if (host.registerBlast) host.registerBlast(pos, R, blastType);
         if (big && host.applyCameraShake) host.applyCameraShake(Math.min(3.5, 95 / (camera.position.distanceTo(pos) + 12)));
         if (nuke || moab) overlayLife = Math.max(overlayLife, nuke ? 3 : 1.2);
         spawnFlashLight({ x: pos.x, y: pos.y + R * .15, z: pos.z }, nuke ? 0xffffff : 0xffd9a0, nuke ? 3000 : big ? 700 : 320, R * 3, nuke ? .6 : .4);
-        // Thermodynamic fireballs / smoke / 30-ft blast walls are rendered by
-        // createRealismFramework; here we only keep scorch + ground dust rings.
+        // Thermodynamic fireballs / smoke / blast geometry are rendered by
+        // createRealismFramework; this path keeps only the original scorch.
         if (opts.thermo) {
-            spawnInto(rings, { pos: { x: pos.x, y: groundY + .3, z: pos.z }, size: R * .2, color: 0xd6c8b0, life: 2.2, opacity: .5, growth: R * 3.4, maxScale: R * (nuke ? 4.5 : 3), shape: 'ring' });
-            if (big) spawnInto(rings, { pos: { x: pos.x, y: groundY + .28, z: pos.z }, size: R * .3, color: 0x8a8a8a, life: 3, opacity: .32, growth: R * 3.8, maxScale: R * (nuke ? 5 : 3.4), shape: 'ring', startDelay: .15 });
             makeScorch({ x: pos.x, y: groundY, z: pos.z }, R, nuke ? 30000 : moab ? 18000 : 12000, nuke ? .68 : .5);
             return;
         }
@@ -3985,15 +4243,9 @@ function createCityStrikePooledEffects(host) {
             const a = Math.random() * Math.PI * 2, rad = Math.random() * R * .55, delay = .12 + i / transitionCount * (host.veryLowEnd ? 1.4 : lowEnd ? 1 : .6) + Math.random() * .08, f = i / transitionCount;
             spawnInto(billboards, { pos: { x: pos.x + Math.cos(a) * rad, y: pos.y + R * .1 + Math.random() * R * .3, z: pos.z + Math.sin(a) * rad }, vel: { x: Math.cos(a) * (3 + Math.random() * 4), y: 4 + Math.random() * 7, z: Math.sin(a) * (3 + Math.random() * 4) }, size: (2.6 + Math.random() * 2.8) * scale, color: f < .4 ? 0xffaa44 : f < .7 ? 0xff7822 : 0xaa5522, life: 1.5 + Math.random() * 1.3, opacity: .88, growth: 4.2 * scale, maxScale: (nuke ? 28 : moab ? 22 : big ? 17 : 12) * scale, gravity: .5, drag: .85, fluid: true, buoyancy: .45, fluidDrag: .06, thermal: .95, density: .9, startDelay: delay });
         }
-        const smokeCount = Math.max(6, Math.floor((nuke ? 90 : moab ? 70 : big ? 52 : 30) * Math.min(2, scale) * mul)), smokeLife = nuke ? 16 : moab ? 12 : big ? 10 : 7, greys = [0x1c1c1c, 0x2a2a2a, 0x3a3a3a, 0x4a4a4a, 0x585858, 0x6a6a6a];
-        for (let i = 0; i < smokeCount; i++) {
-            const a = Math.random() * Math.PI * 2, r0 = Math.random() ** 2 * R * .55, center = 1 - r0 / (R * .55 + .001), swirl = .8 + Math.random() * 1.5, tangent = Math.random() * Math.PI * 2;
-            const delay = .3 + i * (nuke ? .12 : moab ? .095 : big ? .07 : .055) * (host.veryLowEnd ? 2.5 : lowEnd ? 1.7 : 1) + Math.random() * .16;
-            spawnInto(billboards, { pos: { x: pos.x + Math.cos(a) * r0, y: groundY + 1.5 + Math.random() * (3 + Math.random() * 8), z: pos.z + Math.sin(a) * r0 }, vel: { x: Math.cos(a) * (2 + Math.random() * 4) - Math.sin(tangent) * swirl, y: 5 + center * 8 + Math.random() * 5, z: Math.sin(a) * (2 + Math.random() * 4) + Math.cos(tangent) * swirl }, size: (3 + Math.random() * 3.6) * scale, color: greys[i % 6], life: smokeLife * (.6 + Math.random() * .7), opacity: nuke ? .62 : .55, growth: 3 * scale, maxScale: (nuke ? 55 : moab ? 44 : big ? 32 : 22) * scale, gravity: -.45, drag: .45, fluid: true, buoyancy: .7 + center * .5, fluidDrag: .05, thermal: 1.2 + Math.random() * .8, density: .65 + Math.random() * .25, startDelay: delay });
-        }
-        // Ground dust fronts are scheduleable pooled rings; no setTimeout/requestAnimationFrame.
-        spawnInto(rings, { pos: { x: pos.x, y: groundY + .35, z: pos.z }, size: R * .22, color: 0xd6c8b0, life: 2.4 + (big ? .8 : 0), opacity: .55, growth: R * 3.6, maxScale: R * (nuke ? 4.5 : 3), shape: 'ring', startDelay: .22 });
-        spawnInto(rings, { pos: { x: pos.x, y: groundY + .30, z: pos.z }, size: R * .32, color: 0x8a8a8a, life: 3.2, opacity: .4, growth: R * 4, maxScale: R * (nuke ? 5 : 3.6), shape: 'ring', startDelay: .22 });
+        // INDEX 2 owns the explosion cloud. Do not spawn the legacy billboard
+        // smoke or expanding ring layer here: they duplicate the main cloud and
+        // were responsible for the detached/rising blob look.
         if (big) spawnShockwaveDelayed({ x: pos.x, y: groundY + R * .1, z: pos.z }, R * (nuke ? 1.2 : .9), nuke ? 1.8 : .9, nuke ? .12 : .15, .22);
         makeScorch({ x: pos.x, y: groundY, z: pos.z }, R, nuke ? 30000 : moab ? 18000 : 12000, nuke ? .68 : .55);
         if (napalm) for (let i = 0; i < 36; i++) { const a = Math.random() * Math.PI * 2, r = Math.random() * R * 1.15, x = pos.x + Math.cos(a) * r, z = pos.z + Math.sin(a) * r; spawnInto(billboards, { pos: { x, y: (host.getTerrainHeight ? host.getTerrainHeight(x, z) : groundY) + .15 + Math.random() * .7, z }, vel: { x: (Math.random() - .5) * .7, y: 1.4 + Math.random() * 1.8, z: (Math.random() - .5) * .7 }, size: 1 + Math.random(), color: [0xff4400, 0xff8800, 0xffcc00][i % 3], life: 3.2 + Math.random() * 2, opacity: .88, growth: 1.5, maxScale: 5.5, gravity: -.55, drag: .7 }); }
@@ -4106,7 +4358,7 @@ function applyCameraShake(amount){ shakeAmount = Math.max(shakeAmount, amount); 
 function createRealismFramework(host){
     const T = host.THREE, scene = host.scene, camera = host.camera;
     const tierMul = host.veryLowEnd ? .32 : host.lowEnd ? .6 : 1;
-    const CAP_SMOKE = host.veryLowEnd ? 200 : host.lowEnd ? 440 : 780;
+    const CAP_SMOKE = host.veryLowEnd ? 300 : host.lowEnd ? 720 : 1200;
     const CAP_FIRE  = host.veryLowEnd ? 110 : host.lowEnd ? 240 : 430;
     const CAP_FBALL = 14, CAP_WALL = host.veryLowEnd ? 6 : 16;
     const CAP_FLARE = host.veryLowEnd ? 3 : 8;
@@ -4135,27 +4387,24 @@ function createRealismFramework(host){
         void main(){ vL=position; vC=iColor; vA=iAlpha; vSeed=iSeed;
           vec4 w=modelMatrix*instanceMatrix*vec4(position,1.0); vW=w.xyz;
           gl_Position=projectionMatrix*viewMatrix*w; }`;
-    // Keep the existing smoke simulation intact, but use a minimal fragment shader
-    // so smoke cannot fail because of complex GLSL/WebGL driver support.
-    const smokeMat = new T.ShaderMaterial({ transparent:true, depthWrite:false, depthTest:true, side:T.DoubleSide,
+
+    const smokeMat = new T.ShaderMaterial({ transparent:true, depthWrite:false, side:T.DoubleSide,
         uniforms:{ sunDir:{value:_sun}, sunCol:{value:new T.Color(1,0.96,0.86)}, fogCol:{value:new T.Color(0.74,0.82,0.88)}, fogFar:{value:9000} },
         vertexShader: INST_VERT,
         fragmentShader: `varying vec3 vL; varying vec3 vW; varying vec3 vC; varying float vA; varying float vSeed;
           uniform vec3 sunDir; uniform vec3 sunCol; uniform vec3 fogCol; uniform float fogFar;
           ${GLSL_NOISE}
           void main(){ float r=length(vL);
-            float shell=smoothstep(1.30,0.03,r);
-            float n=rfFbm(normalize(vL+vec3(0.001))*1.45 + vL*0.82 + vec3(vSeed*4.1,vSeed*1.7,vSeed*2.9));
-            float detail=smoothstep(0.02,0.72,n);
-            float dens=shell*(0.52+0.48*detail);
-            vec3 N=normalize(vL+vec3(0.0,0.34,0.0));
-            float lit=0.34+0.92*max(dot(N,sunDir),0.0);
-            float under=smoothstep(0.55,-0.72,vL.y); lit*=1.0-0.28*under;
-            vec3 smokeBase=mix(vec3(0.16,0.15,0.14),vec3(0.34,0.33,0.31),detail);
-            vec3 col=mix(vC, smokeBase, 0.72)*lit*sunCol;
-            float d=distance(cameraPosition,vW); float fog=smoothstep(fogFar*0.60,fogFar,d);
-            col=mix(col,fogCol,fog*0.72);
-            float a=min(0.92, dens*vA*1.75); if(a<0.004) discard;
+            float shell=1.0-smoothstep(.05,1.25,r);
+            float n=rfFbm(normalize(vL+vec3(0.001))*1.6 + vL*0.9 + vec3(vSeed*4.1,vSeed*1.7,vSeed*2.9));
+            float dens=shell*smoothstep(0.04,0.52,n);
+            vec3 N=normalize(vL+vec3(0.0,0.28,0.0));
+            float lit=0.22+0.85*max(dot(N,sunDir),0.0);
+            float under=1.0-smoothstep(-.65,.5,vL.y); lit*=1.0-0.38*under;
+            vec3 col=vC*lit*sunCol;
+            float d=distance(cameraPosition,vW); float fog=smoothstep(fogFar*0.55,fogFar,d);
+            col=mix(col,fogCol,fog*0.85);
+            float a=min(0.96, dens*vA*1.28); if(a<0.006) discard;
             gl_FragColor=vec4(col,a);
             #include <tonemapping_fragment>
             #include <colorspace_fragment> }` });
@@ -4165,7 +4414,7 @@ function createRealismFramework(host){
         fragmentShader: `varying vec3 vL; varying vec3 vC; varying float vA; varying float vSeed;
           ${GLSL_NOISE}
           void main(){ float r=length(vL);
-            float core=smoothstep(1.02,0.0,r);
+            float core=1.0-smoothstep(0.0,1.02,r);
             float n=rfFbm(vL*2.3+vec3(vSeed*3.7,vSeed*2.1,vSeed*5.3));
             float hot=core*smoothstep(0.08,0.82,n);
             if(hot*vA<0.006) discard;
@@ -4175,21 +4424,21 @@ function createRealismFramework(host){
             float a=hot*vA;
             gl_FragColor=vec4(col*(0.35+hot*1.5)*(1.0-dying*0.55), a);
             #include <tonemapping_fragment>
-                #include <colorspace_fragment> }` });
+            #include <colorspace_fragment> }` });
     const fballMat = new T.ShaderMaterial({ transparent:true, depthWrite:false, blending:T.AdditiveBlending, side:T.DoubleSide,
         uniforms:{},
         vertexShader: INST_VERT,
         fragmentShader: `varying vec3 vL; varying vec3 vC; varying float vA; varying float vSeed;
           ${GLSL_NOISE}
           void main(){ float r=length(vL);
-            float body=smoothstep(1.06,0.18,r);
+            float body=1.0-smoothstep(.18,1.06,r);
             float n=rfFbm(vL*2.6+vec3(vSeed*2.3,vSeed*4.1,vSeed*1.7));
             float hot=body*(0.72+0.28*n);
             vec3 col=mix(vC,vec3(1.0,0.95,0.82),body*0.85)*(0.85+0.6*n);
             float a=hot*vA; if(a<0.006) discard;
             gl_FragColor=vec4(col*(0.6+a*1.6),a);
             #include <tonemapping_fragment>
-                #include <colorspace_fragment> }` });
+            #include <colorspace_fragment> }` });
 
     // Vertical cylindrical shock front (the 30-ft ground blast wave).
     const wallGeo = new T.CylinderGeometry(1,1,1,56,1,true);
@@ -4211,7 +4460,7 @@ function createRealismFramework(host){
               vec3 col=mix(vec3(1.0,0.96,0.82),fogCol,fog);
               gl_FragColor=vec4(col*(0.5+1.5*a),a);
               #include <tonemapping_fragment>
-                #include <colorspace_fragment> }` });
+            #include <colorspace_fragment> }` });
 
     function makePool(cap, geo, mat){
         const mesh = new T.InstancedMesh(geo, mat, cap);
@@ -4231,7 +4480,7 @@ function createRealismFramework(host){
         return { cap, mesh, st, col, alp, seed, alloc, writeColor };
     }
     const puffGeo = new T.IcosahedronGeometry(1, host.lowEnd?1:2);
-    const smoke = makePool(CAP_SMOKE, puffGeo, smokeMat); smoke.mesh.renderOrder = 12;
+    const smoke = makePool(CAP_SMOKE, puffGeo, smokeMat); smoke.mesh.renderOrder = 6;
     const fire  = makePool(CAP_FIRE,  new T.IcosahedronGeometry(1,1), fireMat); fire.mesh.renderOrder = 5;
     const fballs = makePool(CAP_FBALL, new T.IcosahedronGeometry(1,2), fballMat); fballs.mesh.renderOrder = 5;
     const walls = makePool(CAP_WALL, wallGeo, wallMat); walls.mesh.renderOrder = 5;
@@ -4251,14 +4500,14 @@ function createRealismFramework(host){
                 float flick=0.82+0.18*sin(vSeed*37.0);
                 float r1=pow(0.5+0.5*sin(ang*14.0+vSeed*9.0),9.0);
                 float r2=pow(0.5+0.5*sin(ang*7.0-vSeed*4.0),12.0);
-                float core=pow(smoothstep(0.55,0.0,d),2.1);
+                float core=pow(1.0-smoothstep(0.0,.55,d),2.1);
                 float halo=pow(max(0.0,1.0-d),1.7);
                 float a=(core*1.25+halo*(0.16+r1*0.62+r2*0.34))*vA*flick;
                 if(a<0.004)discard;
                 vec3 col=vC*(core*2.0+halo*0.85)+vec3(1.0,0.97,0.92)*core;
                 gl_FragColor=vec4(col,min(0.98,a));
                 #include <tonemapping_fragment>
-                #include <colorspace_fragment> }` });
+            #include <colorspace_fragment> }` });
     const flareMesh=new T.InstancedMesh(flareGeo,flareMat,CAP_FLARE);
     flareMesh.frustumCulled=false; flareMesh.renderOrder=9;
     const flareCol=new T.InstancedBufferAttribute(new Float32Array(CAP_FLARE*3),3);
@@ -4338,7 +4587,7 @@ function createRealismFramework(host){
     for(let i=0;i<CAP_SHARD;i++) shardMesh.setMatrixAt(i,HIDDEN); scene.add(shardMesh);
     const shards = new Array(CAP_SHARD); for(let i=0;i<CAP_SHARD;i++) shards[i]={alive:false};
     let chunkCursor=0, shardCursor=0;
-    const _tmpC = new T.Color(), _tmpC2 = new T.Color();
+    const _tmpC = new T.Color(), _tmpC2 = new T.Color(), _tmpC3 = new T.Color();
     function writeMeshColor(attr,i,kind){ const pal=FRACTURE_COLORS[kind]||FRACTURE_COLORS.stone; _tmpC.setHex(pal[(Math.random()*pal.length)|0]); attr.setXYZ(i,_tmpC.r,_tmpC.g,_tmpC.b); }
     function spawnChunk(o){
         let i=chunkCursor; for(let k=0;k<CAP_CHUNK;k++){ if(!chunks[i].alive)break; i=(i+1)%CAP_CHUNK; } chunkCursor=(i+1)%CAP_CHUNK;
@@ -4415,7 +4664,11 @@ function createRealismFramework(host){
         p.alive=true; p.x=o.x;p.y=o.y;p.z=o.z; p.vx=o.vx||0;p.vy=o.vy||0;p.vz=o.vz||0;
         p.r=o.r||4; p.maxR=o.maxR||p.r*6; p.vr=o.vr||6; p.age=0; p.life=o.life||14;
         p.alpha=o.alpha==null?.8:o.alpha; p.hot=o.hot==null?.5:o.hot; p.buoy=o.buoy==null?1:o.buoy;
+        p.riseDelay=o.riseDelay||0; p.baseY=o.baseY==null?o.y:o.baseY;
+        p.fadeTop=o.fadeTop||0; p.fadeBand=o.fadeBand||0; p.stage=o.stage||'cloud';
         p.axis=o.axis?{x:o.axis.x,z:o.axis.z,pull:o.axisPull==null?.25:o.axisPull}:null;
+        p.cloudFixed=!!o.cloudFixed; p.vertical=o.vertical==null?1:o.vertical;
+        p.baseY=o.baseY==null?o.y:o.baseY;
         p.col0=new T.Color(o.hotColor||0x241d18); p.col1=new T.Color(o.col||0x6c6a6d); p.seed=Math.random()*40;
         smoke.seed.setX(i,p.seed); smoke.writeColor(i,o.hotColor||0x241d18);
         return p;
@@ -4424,7 +4677,7 @@ function createRealismFramework(host){
         const i=fire.alloc(), p=fire.st[i];
         p.alive=true; p.x=o.x;p.y=o.y;p.z=o.z; p.vx=o.vx||0;p.vy=o.vy||0;p.vz=o.vz||0;
         p.r=o.r||3; p.maxR=o.maxR||p.r*1.6; p.vr=o.vr||5; p.age=0; p.life=o.life||.9; p.alpha=o.alpha==null?.95:o.alpha; p.seed=Math.random()*40;
-        p.chain=o.chain?true:false;
+        p.chain=o.chain?true:false; p.attached=!!o.attached; p.groundY=o.groundY;
         fire.seed.setX(i,p.seed); fire.writeColor(i,o.color||0xff7a22);
         return p;
     }
@@ -4444,25 +4697,53 @@ function createRealismFramework(host){
         walls.seed.setX(i,p.seed); walls.mesh.setMatrixAt(i,HIDDEN); return p;
     }
     function setPuffMatrix(pool,i,p,r){
-        _p.set(p.x,p.y,p.z); _q.identity(); _s.setScalar(r); _m4.compose(_p,_q,_s); pool.mesh.setMatrixAt(i,_m4);
+        _p.set(p.x,p.y,p.z); _q.identity();
+        const v = p.vertical==null?1:p.vertical;
+        _s.set(r, r*v, r);
+        _m4.compose(_p,_q,_s); pool.mesh.setMatrixAt(i,_m4);
     }
     function updatePools(dt, windX, windZ){
         // smoke — buoyant expansion, Taylor entrainment, axial pull into the stem
         for(let i=0;i<CAP_SMOKE;i++){ const p=smoke.st[i]; if(!p.alive) continue; p.age+=dt;
             if(p.age>=p.life){ p.alive=false; smoke.mesh.setMatrixAt(i,HIDDEN); smoke.alp.setX(i,0); continue; }
-            // Keep the explosion smoke as a compact initial cloud. Do not add
-            // artificial vertical buoyancy or a rising smoke-column velocity.
-            p.vy*=Math.exp(-4.5*dt);
-            if(Math.abs(p.vy)<0.08) p.vy=0;
-            const entrain=p.vr*1.5*(1-Math.exp(-p.age*2.3))+1.8;
+            const heat=Math.max(0,1-p.age/(p.life*0.62));
+            const cloudRamp=T.MathUtils.smoothstep(p.age,0,.55);
+            // Main explosion cloud is spatially anchored. It becomes taller by
+            // anisotropic expansion rather than translating upward.
+            if(p.cloudFixed){
+                p.vy=0; p.y=p.baseY;
+                p.vx+=(windX-p.vx)*Math.min(1,.055*dt);
+                p.vz+=(windZ-p.vz)*Math.min(1,.055*dt);
+            }else{
+                const liftAge=Math.max(0,p.age-p.riseDelay);
+                const liftRamp=liftAge>0?1-Math.exp(-liftAge*2.4):0;
+                p.vy+=(2.0+p.buoy*8.0)*heat*liftRamp*dt;
+                p.vy*=Math.exp(-(.38+.38*(1-heat))*dt);
+                p.vx+=(windX-p.vx)*Math.min(1,.075*dt); p.vz+=(windZ-p.vz)*Math.min(1,.075*dt);
+                p.y+=p.vy*dt;
+            }
+            const entrain=p.vr*(.22+.78*heat)*(1-Math.exp(-p.age*2.1))+1.1;
             p.r=Math.min(p.maxR, p.r+entrain*dt);
-            if(p.axis){ p.vx+=(p.axis.x-p.x)*p.axis.pull*dt; p.vz+=(p.axis.z-p.z)*p.axis.pull*dt; }
-            p.vx+=(windX-p.vx)*Math.min(1,.10*dt); p.vz+=(windZ-p.vz)*Math.min(1,.10*dt);
-            p.x+=p.vx*dt; p.y+=p.vy*dt; p.z+=p.vz*dt;
-            const ta=p.age/p.life, appear=T.MathUtils.smoothstep(ta,.0,.10);
-            const fade=ta>.62?Math.max(0,1-(ta-.62)/.38):1;
+            if(p.axis){ p.vx+=(p.axis.x-p.x)*p.axis.pull*heat*dt; p.vz+=(p.axis.z-p.z)*p.axis.pull*heat*dt; }
+            p.x+=p.vx*dt; p.z+=p.vz*dt;
+            const ta=p.age/p.life, appear=T.MathUtils.smoothstep(ta,.0,.07);
+            const timeFade=ta>.84?Math.max(0,1-(ta-.84)/.16):1;
+            const altFade=p.fadeTop>0&&p.fadeBand>0?1-T.MathUtils.smoothstep(p.y,p.fadeTop-p.fadeBand,p.fadeTop):1;
+            const fade=timeFade*Math.max(0,altFade);
             smoke.alp.setX(i,p.alpha*appear*fade);
-            const c=_tmpC.copy(p.col0).lerp(p.col1, Math.min(1,ta*1.15)); smoke.col.setXYZ(i,c.r,c.g,c.b);
+            // Hot detonation colors collapse toward neutral grey, briefly pass
+            // through near-black soot, then disappear instead of staying black.
+            let c;
+            if(p.stage==='explosionCloud'){
+                if(ta<.10) c=_tmpC.setRGB(.48,.025,.006).lerp(_tmpC2.setRGB(1,.18,.015),ta/.10);
+                else if(ta<.22) c=_tmpC.copy(_tmpC2.setRGB(1,.18,.015)).lerp(_tmpC3.setRGB(1,.97,.82),(ta-.10)/.12);
+                else if(ta<.58) c=_tmpC.copy(_tmpC3.setRGB(1,.97,.82)).lerp(_tmpC2.setRGB(.40,.40,.40),(ta-.22)/.36);
+                else c=_tmpC.copy(_tmpC2.setRGB(.40,.40,.40)).lerp(_tmpC3.setRGB(.055,.055,.055),Math.min(1,(ta-.58)/.20));
+            }else{
+                c=_tmpC.copy(p.col0).lerp(p.col1, Math.min(1,ta*1.15));
+            }
+            smoke.col.setXYZ(i,c.r,c.g,c.b);
+            if(p.cloudFixed) p.vertical=1.0 + p.vertical*0.46*cloudRamp + (p.vertical*0.28)*T.MathUtils.smoothstep(ta,.26,.86);
             setPuffMatrix(smoke,i,p,p.r);
         }
         // fire — fast hot core; when it expires it births a soot puff so fires
@@ -4471,9 +4752,16 @@ function createRealismFramework(host){
             if(p.age>=p.life){ p.alive=false; fire.mesh.setMatrixAt(i,HIDDEN); fire.alp.setX(i,0);
                 if(p.chain) spawnSmoke({x:p.x,y:p.y,z:p.z,vx:p.vx*.5,vy:p.vy*.35,vz:p.vz*.5,r:p.r*.9,maxR:p.maxR*3.4,vr:p.vr*.5,life:7+Math.random()*7,alpha:.82,hot:.9,buoy:1.25,hotColor:0x161009,col:0x2e2823});
                 continue; }
-            p.vy+=11*dt; p.vx+=(windX-p.vx)*Math.min(1,.25*dt); p.vz+=(windZ-p.vz)*Math.min(1,.25*dt);
-            p.x+=p.vx*dt; p.y+=p.vy*dt; p.z+=p.vz*dt;
-            p.r=Math.min(p.maxR, p.r+p.vr*1.25*dt);
+            if(p.attached){
+                // Incandescent blast-shell particles stay attached to the detonation footprint.
+                p.vy=0; p.y=host.getTerrainHeight(p.x,p.z)+.42;
+            }else{
+                // Only flame explicitly emitted by the rising column gets vertical lift.
+                p.vy+=2.2*dt; p.vy*=Math.exp(-.9*dt); p.y+=p.vy*dt;
+            }
+            p.vx+=(windX-p.vx)*Math.min(1,.20*dt); p.vz+=(windZ-p.vz)*Math.min(1,.20*dt);
+            p.x+=p.vx*dt; p.z+=p.vz*dt;
+            p.r=Math.min(p.maxR, p.r+p.vr*1.15*dt);
             const ta=p.age/p.life; const ff=ta<.5?1:Math.max(.02,1-(ta-.5)/.5); fire.alp.setX(i,p.alpha*ff);
             setPuffMatrix(fire,i,p,p.r);
         }
@@ -4509,41 +4797,28 @@ function createRealismFramework(host){
         const sc = nuke?2.6:moab?1.7:R>=220?1.25:R>=95?.85:.5; // visual scale band
         const gy = host.getTerrainHeight(pos.x,pos.z);
         const fogDur = nuke?95:moab?70:big?38:0;
+        const rise = R*(nuke?.30:moab?.22:big?.14:.16);
+        const maxH = R*(nuke?2.70:moab?1.25:big?.50:4.40);
         const ev = { x:pos.x,y:Math.max(gy,pos.y||gy),z:pos.z, R, age:0, sc, big, nuke, moab, napalm,
-            columnDur: 0, life: Math.max(nuke?22:moab?17:big?12:6, fogDur),
-            stemAcc:0, frontTimer:0, fogTimer:0, cap2:false, fball:null, gy, fogDur };
+            columnDur: nuke?7:moab?4:big?2.8:1.4, life: Math.max(nuke?16:moab?12:big?9:5, fogDur),
+            stemAcc:0, frontTimer:0, fogTimer:0, cap2:false, fball:null, gy, fogDur, rise, maxH };
         events.push(ev);
         impulseDebris(pos.x,pos.y||gy,pos.z,R*1.1,R*.28);
         // Blinding initial flash: white screen that fades with the fireball age.
-        flashLevel = Math.max(flashLevel, nuke?1:moab?.92:big?.62:R>=40?.32:.14);
+        const glareRange=nuke?14000:moab?8500:big?4200:1500,glare=Math.pow(T.MathUtils.clamp(1-Math.hypot(camera.position.x-pos.x,camera.position.y-gy,camera.position.z-pos.z)/glareRange,0,1),.55);
+        flashLevel = Math.max(flashLevel,(nuke?1:moab?.92:big?.62:R>=40?.32:.14)*glare);
         // Brilliant flare with actual light rays and glare (nukes blue-white, MOAB amber).
         if(nuke) spawnFlare({x:pos.x,y:gy+R*.22,z:pos.z,s0:R*.3,s1:R*4.2,life:2.8,color:0xdceaff});
         else if(moab) spawnFlare({x:pos.x,y:gy+R*.2,z:pos.z,s0:R*.25,s1:R*2.6,life:2.0,color:0xffd2a0});
         else if(big) spawnFlare({x:pos.x,y:gy+R*.18,z:pos.z,s0:R*.18,s1:R*1.3,life:1.15,color:0xffe9c8});
         // Brief white-hot flash bubble.
-        spawnFireball({ x:pos.x,y:gy+R*.12,z:pos.z, r0:R*.04, rMax:R*(nuke?.55:big?.4:.3), grow:.22, life:nuke?.6:.4, color:0xffffff, groundY:gy, grounded:true, contact:.9 });
-        // Short orange fire flash immediately follows the white-hot core.
-        if(!nuke){
-            spawnFlare({x:pos.x,y:gy+R*.10,z:pos.z,s0:Math.max(2,R*.045),s1:Math.max(7,R*(big?.26:.16)),life:big?.42:.28,color:0xff8628});
-        }
-        // Small, fast sparks: bright, radial, and gravity-driven instead of oversized fire puffs.
-        const sparkCount = Math.round((big?26:14) * tierMul);
-        const sparkReach = R * (big?.28:.20);
-        for(let i=0;i<sparkCount;i++){
-            const a=Math.random()*Math.PI*2, elev=.35+Math.random()*.9, speed=R*(.55+Math.random()*.75);
-            spawnParticle({
-                pos:{x:pos.x+(Math.random()-.5)*R*.04,y:gy+R*(.05+Math.random()*.12),z:pos.z+(Math.random()-.5)*R*.04},
-                vel:{x:Math.cos(a)*speed*elev,y:R*(.22+Math.random()*.5),z:Math.sin(a)*speed*elev},
-                size:.13+Math.random()*.17, color:[0xffffff,0xffffb0,0xffc04a,0xff6f1d][i%4],
-                life:.22+Math.random()*.34, opacity:.95, growth:.18, maxScale:.35+Math.random()*.35, gravity:7.5, drag:1.9
-            });
-        }
+        spawnFireball({ x:pos.x,y:gy+R*.12,z:pos.z, r0:R*.028, rMax:R*(nuke?.42:big?.30:.24), grow:.20, life:nuke?.55:.38, color:0xffffff, groundY:gy, grounded:true, contact:.9 });
         if(big){
             // Massive incendiary fireball that REMAINS IN CONTACT WITH THE GROUND
             // while it grows, then lifts into the stem as it cools.
-            ev.fball = spawnFireball({ x:pos.x,y:gy+R*.1,z:pos.z, r0:R*.08, rMax:R*(nuke?.5:moab?.42:.26),
+            ev.fball = spawnFireball({ x:pos.x,y:gy+R*.1,z:pos.z, r0:R*.052, rMax:R*(nuke?.38:moab?.34:.22),
                 grow:nuke?1.0:.75, life:nuke?4.6:moab?3.6:2.4, color:nuke?0xffe0a8:moab?0xffa040:0xff8a30,
-                vy:R*(nuke?.11:moab?.07:.06), groundY:gy, grounded:true, contact:nuke?.62:moab?.55:.4 });
+                vy:0, groundY:gy, grounded:true, contact:1.0 });
             if(nuke){ // secondary hot lobe climbing just above the main fireball
                 spawnFireball({ x:pos.x,y:gy+R*.34,z:pos.z, r0:R*.06, rMax:R*.3, grow:.85, life:2.6, delay:.8, color:0xffc878, vy:R*.16, groundY:gy, grounded:false });
             }
@@ -4560,20 +4835,20 @@ function createRealismFramework(host){
         // Fire puffs chain into soot smoke as they expire, feeding the plume.
         const fireShells = big?4:3, fireN = Math.round((big?44:20)*tierMul*(.7+sc));
         for(let sh=0; sh<fireShells; sh++){
-            const rr=R*(.07+sh*.115), n=Math.max(6,Math.round(fireN/(sh*.78+1)));
+            const rr=R*(.08+sh*.15), n=Math.max(6,Math.round(fireN/(sh*.75+1)));
             for(let i=0;i<n;i++){ const a=i/n*Math.PI*2+sh*.7, rr2=rr*(.75+Math.random()*.5);
                 spawnFire({ x:pos.x+Math.cos(a)*rr2, y:gy+R*.08+Math.random()*R*.16, z:pos.z+Math.sin(a)*rr2,
                     vx:Math.cos(a)*R*(.32+sh*.55), vz:Math.sin(a)*R*(.32+sh*.55), vy:R*.24+Math.random()*R*.16,
-                    r:R*(.028+Math.random()*.028)*sc+1.2, maxR:R*.145*sc+6, vr:R*.58, life:.8+Math.random()*1.0,
-                    color:[0xffffff,0xffffad,0xffa52a,0xff5716][sh%4], chain:true }); }
+                    r:R*(.018+Math.random()*.018)*sc+0.9, maxR:R*.13*sc+5, vr:R*.44, life:.65+Math.random()*.55,
+                    color:[0xffffee,0xffc050,0xff8426,0xff5a18][sh%4], chain:true, attached:true, groundY:gy }); }
         }
         // Dense ground-dust + soot shell hugging the terrain, kicked out fast.
-        const dustN = Math.round((nuke?110:big?60:26)*tierMul);
+        const dustN = Math.round((nuke?125:big?72:34)*tierMul);
         for(let i=0;i<dustN;i++){ const a=Math.random()*6.283, rr=Math.random()*R*.55;
             spawnSmoke({ x:pos.x+Math.cos(a)*rr, y:gy+1.5+Math.random()*4, z:pos.z+Math.sin(a)*rr,
                 vx:Math.cos(a)*R*(.4+Math.random()*.55), vz:Math.sin(a)*R*(.4+Math.random()*.55), vy:3+Math.random()*7,
-                r:R*.052*sc+2.5, maxR:R*(.32+Math.random()*.17), vr:R*.34, life:(nuke?24:big?17:10)*(.7+Math.random()*.6),
-                alpha:.62+Math.random()*.3, hot:.3, buoy:.5, hotColor:0x4a4038, col:0x8d8478 }); }
+                r:R*.036*sc+1.8, maxR:R*(.30+Math.random()*.16), vr:R*.34, life:(nuke?24:big?17:10)*(.7+Math.random()*.6),
+                alpha:.48+Math.random()*.22, hot:.3, buoy:.5, hotColor:0x4a4038, col:0x8d8478 }); }
         // Low dirt/smoke ground fog that races outward across the blast radius.
         if(big){
             const fogN=Math.round((nuke?70:moab?52:28)*tierMul);
@@ -4586,15 +4861,15 @@ function createRealismFramework(host){
                     alpha:.78+Math.random()*.16, hotColor:nuke?0x2c2925:0x33271c, col:nuke?0x6a6660:0x6f5d48 }); }
         }
         // Immediate dense smoke shell around the core.
-        const smokeN = Math.round((nuke?92:big?52:22)*tierMul);
+        const smokeN = Math.round((nuke?210:big?124:50)*tierMul);
         for(let i=0;i<smokeN;i++){ const a=Math.random()*6.283, rr=Math.pow(Math.random(),1.4)*R*.5;
             const up=Math.random();
-            spawnSmoke({ x:pos.x+Math.cos(a)*rr, y:gy+up*R*.4+2, z:pos.z+Math.sin(a)*rr,
-                vx:Math.cos(a)*R*.16, vz:Math.sin(a)*R*.16, vy:R*.1+Math.random()*R*.12,
-                r:R*.05*sc+2.0, maxR:R*(nuke?.52:moab?.44:.34)+3, vr:R*.26,
-                life:(nuke?32:moab?26:big?19:12)*(.65+Math.random()*.7), alpha:nuke?.9:.86,
-                hot:.95, buoy:1.25, axis:big?{x:pos.x,z:pos.z}:null, axisPull:.14,
-                hotColor:big?0x090807:0x12100f, col:nuke?0x2f2d2b:0x252321 }); }
+            spawnSmoke({ x:pos.x+Math.cos(a)*rr, y:gy+up*R*.34+2, z:pos.z+Math.sin(a)*rr,
+                baseY:gy+up*R*.34+2, vx:Math.cos(a)*R*.11, vz:Math.sin(a)*R*.11, vy:0,
+                r:R*.031*sc+1.2, maxR:R*(nuke?.48:moab?.42:.34)+3, vr:R*.22,
+                life:(nuke?26:moab?22:big?16:10)*(.72+Math.random()*.45), alpha:nuke?.99:.96,
+                hot:.95, buoy:0, cloudFixed:true, vertical:nuke?1.70:1.42, stage:'explosionCloud',
+                hotColor:0xff4a12, col:nuke?0x686664:0x5f5b56 }); }
         // Ground fracture: stone/dirt chunks thrown by the overpressure.
         const groundChunks = Math.round((nuke?180:moab?120:big?60:R>=30?22:8)*tierMul);
         fracture(pos, pos, groundChunks, ['stone','dirt'], Math.min(52,R*.16), R>200?2.2:1.2);
@@ -4604,51 +4879,41 @@ function createRealismFramework(host){
             spawnFire({x,y:host.getTerrainHeight(x,z)+.6,z,r:1.2+Math.random()*1.8,maxR:7,vr:.8,life:3+Math.random()*4,vy:2.2,chain:true}); } }
         return ev;
     }
-    function eventMushroomCap(ev,altTop){ // when the fireball dies, leave an opaque cooling cap
-        const n=Math.round((ev.nuke?altTop?96:80:ev.moab?56:ev.big?32:14)*tierMul);
-        const top=altTop!==undefined?altTop:ev.gy+ev.R*(ev.nuke?.92:ev.moab?.55:.38);
-        const spread=ev.nuke?altTop?.62:.46:ev.moab?.4:.26;
-        const maxR=ev.nuke?altTop?1.05:.8:ev.moab?.55:.58;
-        const hot=ev.nuke?0x14110f:ev.moab?0x241b12:0x2b2622;
-        const cold=ev.nuke?0x454342:ev.moab?0x59483b:0x66635f;
-        for(let i=0;i<n;i++){ const a=Math.random()*6.283, rr=Math.sqrt(Math.random())*ev.R*spread;
-            spawnSmoke({ x:ev.x+Math.cos(a)*rr, y:top+(Math.random()-.5)*ev.R*(altTop?.14:.08), z:ev.z+Math.sin(a)*rr,
-                vx:Math.cos(a)*ev.R*.06, vz:Math.sin(a)*ev.R*.06, vy:ev.R*(altTop?.02:.08),
-                r:ev.R*(altTop?.09:.07)+3, maxR:ev.R*maxR, vr:ev.R*.13, life:ev.nuke?70:ev.moab?46:28,
-                alpha:.92, hot:.5, buoy:altTop?.35:.7, axis:{x:ev.x,z:ev.z}, axisPull:.05, hotColor:hot, col:cold }); }
-    }
+    function eventMushroomCap(){ /* disabled: explosion cloud grows in place */ }
     function updateEvents(dt, windX, windZ){
         for(let e=events.length-1;e>=0;e--){ const ev=events[e]; ev.age+=dt;
-            // Initial smoke/fire are created directly by detonate(). Keep them
-            // close to the blast instead of generating a rising vertical plume.
-            // Dust kicked up by the advancing shock front remains horizontal.
-            ev.frontTimer-=dt;
-            if(ev.frontTimer<=0 && ev.age<(ev.big?3.2:1.4)){ ev.frontTimer=ev.big?.16:.22;
-                const frontR=Math.min(ev.R*1.5, ev.R*.1+ev.age*ev.R*.95);
-                const n=Math.round((ev.big?16:8)*tierMul);
-                for(let i=0;i<n;i++){ const a=Math.random()*6.283, rr=frontR*(.9+Math.random()*.2);
-                    spawnSmoke({x:ev.x+Math.cos(a)*rr,y:ev.gy+1.5,z:ev.z+Math.sin(a)*rr,
-                        vx:Math.cos(a)*ev.R*.55, vz:Math.sin(a)*ev.R*.55, vy:2.5+Math.random()*4,
-                        r:3.5+Math.random()*3.5,maxR:ev.R*.2+10,vr:ev.R*.28,life:8+Math.random()*6,alpha:.6,hot:0,buoy:.35,hotColor:0x4b4236,col:0x978c7c}); }
-            }
-            // The low ground-fog front remains, but it does not form a rising column.
-            if(ev.fogDur){ ev.fogTimer-=dt;
-                const raceDur=ev.nuke?13:ev.moab?10:6;
-                if(ev.fogTimer<=0 && ev.age<raceDur){ ev.fogTimer=.16;
-                    const front=ev.R*(1-Math.exp(-ev.age*(ev.nuke?.3:ev.moab?.36:.5)))*1.02;
-                    const n=Math.round((ev.nuke?26:ev.moab?22:12)*tierMul);
-                    for(let i=0;i<n;i++){ const a=i/n*Math.PI*2+Math.random()*.3;
-                        spawnGroundFog({ x:ev.x+Math.cos(a)*front, y:ev.gy+4, z:ev.z+Math.sin(a)*front,
-                            vx:Math.cos(a)*ev.R*(ev.nuke?.5:ev.moab?.55:.45), vz:Math.sin(a)*ev.R*(ev.nuke?.5:ev.moab?.55:.45),
-                            r:ev.R*(ev.nuke?.06:ev.moab?.055:.045)+Math.random()*5, maxR:ev.R*(ev.nuke?.26:ev.moab?.24:.18)+10,
-                            vr:ev.R*.03, life:(ev.nuke?80:ev.moab?62:30)+Math.random()*20, ys:.16+Math.random()*.08,
-                            alpha:.8, hotColor:ev.nuke?0x262320:0x2f251a, col:ev.nuke?0x665f58:0x6c5a45 }); }
+            // No free-rising thermal blob. The visible explosion cloud is the anchored
+            // smoke field spawned at detonation and grows vertically in place.
+            if(ev.fball && !ev.fball.alive) ev.fball=null;
+            if(ev.age<ev.columnDur){
+                // Dust kicked up by the advancing shock front.
+                ev.frontTimer-=dt;
+                if(ev.frontTimer<=0 && ev.age<(ev.big?3.2:1.4)){ ev.frontTimer=ev.big?.16:.22;
+                    const frontR=Math.min(ev.R*1.5, ev.R*.1+ev.age*ev.R*.95);
+                    const n=Math.round((ev.big?16:8)*tierMul);
+                    for(let i=0;i<n;i++){ const a=Math.random()*6.283, rr=frontR*(.9+Math.random()*.2);
+                        spawnSmoke({x:ev.x+Math.cos(a)*rr,y:ev.gy+1.5,z:ev.z+Math.sin(a)*rr,
+                            vx:Math.cos(a)*ev.R*.46, vz:Math.sin(a)*ev.R*.46, vy:0,
+                            r:3.5+Math.random()*3.5,maxR:ev.R*.2+10,vr:ev.R*.28,life:8+Math.random()*6,alpha:.6,hot:0,buoy:.35,hotColor:0x4b4236,col:0x978c7c}); }
+                }
+                // The racing low ground-fog front (only for large warheads).
+                if(ev.fogDur){ ev.fogTimer-=dt;
+                    const raceDur=ev.nuke?13:ev.moab?10:6;
+                    if(ev.fogTimer<=0 && ev.age<raceDur){ ev.fogTimer=.16;
+                        const front=ev.R*(1-Math.exp(-ev.age*(ev.nuke?.3:ev.moab?.36:.5)))*1.02;
+                        const n=Math.round((ev.nuke?26:ev.moab?22:12)*tierMul);
+                        for(let i=0;i<n;i++){ const a=i/n*Math.PI*2+Math.random()*.3;
+                            spawnGroundFog({ x:ev.x+Math.cos(a)*front, y:ev.gy+4, z:ev.z+Math.sin(a)*front,
+                                vx:Math.cos(a)*ev.R*(ev.nuke?.5:ev.moab?.55:.45), vz:Math.sin(a)*ev.R*(ev.nuke?.5:ev.moab?.55:.45),
+                                r:ev.R*(ev.nuke?.06:ev.moab?.055:.045)+Math.random()*5, maxR:ev.R*(ev.nuke?.26:ev.moab?.24:.18)+10,
+                                vr:ev.R*.03, life:(ev.nuke?80:ev.moab?62:30)+Math.random()*20, ys:.16+Math.random()*.08,
+                                alpha:.58, hotColor:ev.nuke?0x262320:0x2f251a, col:ev.nuke?0x665f58:0x6c5a45 }); }
+                    }
                 }
             }
             if(ev.age>ev.life && !ev.fball) events.splice(e,1);
         }
     }
-
     // 1 inside the dust disk = visibility should be choked to a few hundred metres.
     function groundFogVisibilityFactor(camPos){
         let f=0;
@@ -4765,6 +5030,7 @@ function registerBlast(pos, radius, type){
 function createExplosion(pos, blastType){
     const cfg = EXPLOSIONS[blastType];
     if(!cfg) return;
+    disruptWebcam(pos);
     const isBig = blastType === 'bomb' || blastType === 'missile' || blastType === 'heavyMissile' || blastType === 'moab' || blastType === 'nuke' || blastType === 'thermobaric';
     createRealisticExplosion(pos, cfg, { isBig, blastType, thermo:true }); // flash light, scorch, dust rings
     if(realismFX) realismFX.detonate(pos, cfg, blastType); // thermodynamic cloud/fire/wall/debris
@@ -5133,7 +5399,7 @@ const GradeShader = {
             float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
             col = mix(vec3(l), col, uSaturation);
             col = (col - 0.5) * uContrast + 0.5;
-            float vig = smoothstep(1.05, 0.30, length(d) * 1.35);
+            float vig = 1.0-smoothstep(0.30, 1.05, length(d) * 1.35);
             col *= mix(1.0, vig, uVignette);
             float g = hash(uv * 1024.0 + uTime * 37.0) - 0.5;
             col += g * uGrain;
@@ -5145,11 +5411,11 @@ let composer = null, renderPass = null, bloomPass = null, outputPass = null, gra
 let currentGfxMode = VERY_LOW_MEM ? 'battery' : LOW_MEM ? 'low' : 'medium'; // RAM only suggests the default; K settings override it
 function buildComposer(mode){
     if(composer){ composer.dispose(); composer = null; renderPass = null; bloomPass = null; outputPass = null; gradePass = null; ssaoPass = null; }
-    if(!['high','ultra','cinematic','rtx'].includes(mode)) return;
+    if(!['high','ultra','cinematic','rtx','4k'].includes(mode)) return;
     try {
         composer = new EffectComposer(renderer);
         composer.setSize(window.innerWidth, window.innerHeight);
-        composer.setPixelRatio(Math.min(window.devicePixelRatio, mode==='rtx'||mode==='cinematic'?0.92:1.0));
+        composer.setPixelRatio(mode==='4k'?Math.min(window.devicePixelRatio,2.25):Math.min(window.devicePixelRatio, mode==='rtx'||mode==='cinematic'?0.92:1.0));
         // MSAA on the HDR render target: crisp edges at long range.
         if(renderer.capabilities.isWebGL2){ const samples=Math.min(4,renderer.capabilities.samples||4); if(composer.renderTarget1)composer.renderTarget1.samples=samples; if(composer.renderTarget2)composer.renderTarget2.samples=samples; }
         renderPass = new RenderPass(scene, camera);
@@ -5341,7 +5607,7 @@ function drawMinimap(){
 }
 
 // ── Satellite topographic basemap: elevation/land-use colour + contours ──
-const TOPO_RES=720, TOPO_RANGE=64000;
+const TOPO_RES=768, TOPO_RANGE=CFG.worldSize*.5;
 let topoCache=null, topoCacheBuilding=false, topoRows=0, topoCtx2=null, topoImg=null;
 function topoColor(x,z){
     const h=terrainHeightAt(x,z);
@@ -5374,7 +5640,7 @@ function ensureTopoCache(){
             }
         }
         if(topoRows<TOPO_RES)requestAnimationFrame(step);
-        else{topoCtx2.putImageData(topoImg,0,0);topoCache=c;topoCacheBuilding=false;topoImg=null;topoCtx2=null;}
+        else{topoCtx2.putImageData(topoImg,0,0);topoCache=c;topoCacheBuilding=false;topoImg=null;topoCtx2=null;if(isMapOpen)drawFullMap();}
     }
     requestAnimationFrame(step);
 }
@@ -5412,6 +5678,8 @@ function drawFullMap(){
     for(const city of CITY_RECORDS){ctx.fillStyle='rgba(82,88,92,.48)';ctx.beginPath();ctx.arc(city.x,city.z,city.radius,0,Math.PI*2);ctx.fill();ctx.strokeStyle='rgba(210,214,210,.22)';ctx.lineWidth=12;ctx.stroke();ctx.fillStyle='rgba(235,238,232,.72)';ctx.font='bold 92px monospace';ctx.textAlign='center';ctx.fillText(city.name.replace(' City',''),city.x,city.z-city.radius-120);}
     for(const t of TOWN_CENTERS){ctx.fillStyle='rgba(150,135,105,.82)';drawOrganicCircle(ctx,t.x,t.z,t.organicR||150,t.seed||1,5);ctx.fill();ctx.strokeStyle='rgba(110,96,66,.5)';ctx.lineWidth=Math.max(1,3/z);ctx.stroke();}
     ctx.strokeStyle='rgba(220,220,215,.92)';ctx.lineWidth=CFG.highwayWidth*.58;for(const path of HIGHWAY_PATHS){ctx.beginPath();ctx.moveTo(path[0].x,path[0].z);for(let i=1;i<path.length;i++)ctx.lineTo(path[i].x,path[i].z);ctx.stroke();}
+    // Connected regional/town/farm links are intentionally visible on the strategic map.
+    ctx.strokeStyle='rgba(205,198,164,.72)';ctx.lineWidth=18;for(const path of REGIONAL_ROAD_PATHS){ctx.beginPath();ctx.moveTo(path[0].x,path[0].z);for(let i=1;i<path.length;i++)ctx.lineTo(path[i].x,path[i].z);ctx.stroke();}
     for(const f of forestClusters){
         ctx.fillStyle='rgba(44,104,52,0.62)';
         drawForestClusterShape(ctx,f);
@@ -5427,59 +5695,25 @@ function drawFullMap(){
         ctx.fillRect(b.x - b.w/2, b.z - b.d/2, b.w, b.d);
     }
 
-    for(let i = 0; i < activeBlasts.length; i++){
-        const b = activeBlasts[i];
-        const alpha = b.ttl / b.maxTtl;
-        ctx.fillStyle = `rgba(255,50,50,${0.20 * alpha})`;
-        ctx.beginPath(); ctx.arc(b.x, b.z, b.r, 0, Math.PI*2); ctx.fill();
-        ctx.strokeStyle = `rgba(255,80,80,${0.85 * alpha})`;
-        ctx.lineWidth = 1.4 / z;
-        ctx.beginPath(); ctx.arc(b.x, b.z, b.r, 0, Math.PI*2); ctx.stroke();
-        ctx.fillStyle = `rgba(255,220,40,${0.32 * alpha})`;
-        ctx.beginPath(); ctx.arc(b.x, b.z, b.r*0.42, 0, Math.PI*2); ctx.fill();
-    }
-
-    ctx.fillStyle = '#f0b060';
-    for(let i = 0; i < pickups.length; i++){
-        const p = pickups[i];
-        if(p.mesh && p.mesh.position){
-            ctx.beginPath(); ctx.arc(p.mesh.position.x, p.mesh.position.z, 8, 0, Math.PI*2); ctx.fill();
+    if(mapLayers.objectives){
+        for(let i = 0; i < activeBlasts.length; i++){
+            const b = activeBlasts[i],alpha=b.ttl/b.maxTtl;
+            ctx.fillStyle=`rgba(255,50,50,${.20*alpha})`;ctx.beginPath();ctx.arc(b.x,b.z,b.r,0,Math.PI*2);ctx.fill();
+            ctx.strokeStyle=`rgba(255,80,80,${.85*alpha})`;ctx.lineWidth=1.4/z;ctx.beginPath();ctx.arc(b.x,b.z,b.r,0,Math.PI*2);ctx.stroke();
         }
+        for(const s of scheduledMapStrikes){const remaining=Math.max(0,(s.at-performance.now())/1000);ctx.strokeStyle='#ffd060';ctx.lineWidth=3/z;ctx.beginPath();ctx.arc(s.x,s.z,90,0,Math.PI*2);ctx.stroke();ctx.fillStyle='#fff2ad';ctx.font='bold 42px monospace';ctx.fillText(Math.ceil(remaining)+'s',s.x,s.z-110);}
     }
-
-    for(let i = 0; i < npcs.length; i++){
-        const n = npcs[i];
-        if(!n.userData.dead && n.position){
-            ctx.fillStyle = n.userData.isEnemy ? '#ff6060' : n.userData.isCop ? '#5090e0' : '#60c080';
-            ctx.beginPath(); ctx.arc(n.position.x, n.position.z, 6, 0, Math.PI*2); ctx.fill();
-        }
+    if(mapLayers.stores){ctx.fillStyle='#f0b060';for(const p of pickups)if(p.mesh?.position){ctx.beginPath();ctx.arc(p.mesh.position.x,p.mesh.position.z,8,0,Math.PI*2);ctx.fill();}}
+    if(mapLayers.threats){for(const n of npcs)if(!n.userData.dead&&n.position&&(n.userData.isEnemy||n.userData.isCop)){ctx.fillStyle=n.userData.isEnemy?'#ff6060':'#5090e0';ctx.beginPath();ctx.arc(n.position.x,n.position.z,7,0,Math.PI*2);ctx.fill();}}
+    if(mapLayers.vehicles){
+        ctx.fillStyle='#60d8c0';for(const c of cars)if(c.position){ctx.save();ctx.translate(c.position.x,c.position.z);ctx.rotate(-c.rotation.y);ctx.fillRect(-4,-6,8,12);ctx.restore();}
+        ctx.fillStyle='#d070d0';for(const h of helicopters)if(h.position){ctx.beginPath();ctx.arc(h.position.x,h.position.z,10,0,Math.PI*2);ctx.fill();}
+        ctx.fillStyle='#ffaa40';for(const j of jets)if(j.position){ctx.beginPath();ctx.arc(j.position.x,j.position.z,12,0,Math.PI*2);ctx.fill();}
     }
-
-    ctx.fillStyle = '#60d8c0';
-    for(let i = 0; i < cars.length; i++){
-        const c = cars[i];
-        if(c.position){
-            ctx.save(); ctx.translate(c.position.x, c.position.z); ctx.rotate(-c.rotation.y);
-            ctx.fillRect(-4,-6,8,12); ctx.restore();
-        }
+    if(mapLayers.teleport){
+        camera.getWorldPosition(_vc);ctx.fillStyle='#70d0f0';ctx.beginPath();ctx.arc(_vc.x,_vc.z,12,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2/z;ctx.stroke();
+        if(webcam.has){ctx.save();ctx.translate(webcam.position.x,webcam.position.z);ctx.strokeStyle=webcam.noService?'#ff5555':'#9ef4ff';ctx.fillStyle=webcam.noService?'#571616':'#173f54';ctx.lineWidth=4/z;ctx.fillRect(-28,-22,56,40);ctx.strokeRect(-28,-22,56,40);ctx.fillStyle='#d8f6ff';ctx.fillRect(-10,-12,20,13);ctx.restore();}
     }
-    ctx.fillStyle = '#d070d0';
-    for(let i = 0; i < helicopters.length; i++){
-        const h = helicopters[i];
-        if(h.position){ ctx.beginPath(); ctx.arc(h.position.x, h.position.z, 10, 0, Math.PI*2); ctx.fill(); }
-    }
-    ctx.fillStyle = '#ffaa40';
-    for(let i = 0; i < jets.length; i++){
-        const j = jets[i];
-        if(j.position){ ctx.beginPath(); ctx.arc(j.position.x, j.position.z, 12, 0, Math.PI*2); ctx.fill(); }
-    }
-
-    camera.getWorldPosition(_vc);
-    ctx.fillStyle = '#70d0f0';
-    ctx.beginPath(); ctx.arc(_vc.x, _vc.z, 12, 0, Math.PI*2); ctx.fill();
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2 / z;
-    ctx.stroke();
 
     ctx.restore();
 
@@ -5490,7 +5724,7 @@ function drawFullMap(){
 }
 
 function updateMapUI(){
-    mapZoomLabel.textContent = mapState.zoom.toFixed(2) + '×';
+    mapZoomLabel.textContent = (mapState.zoom<.1?mapState.zoom.toFixed(3):mapState.zoom.toFixed(2)) + '×';
     mapLockBtn.classList.toggle('locked', mapState.locked);
     mapLockBtn.textContent = mapState.locked ? '🔒 LOCKED' : '🔓 UNLOCKED';
 }
@@ -5499,11 +5733,11 @@ document.getElementById('map-zoom-in').addEventListener('click', ()=>{
     updateMapUI(); drawFullMap();
 });
 document.getElementById('map-zoom-out').addEventListener('click', ()=>{
-    mapState.zoom = Math.max(0.006, mapState.zoom / 1.45);
+    mapState.zoom = Math.max(MAP_MIN_ZOOM, mapState.zoom / 1.45);
     updateMapUI(); drawFullMap();
 });
 document.getElementById('map-reset').addEventListener('click', ()=>{
-    mapState.zoom = 0.26; mapState.panX = 0; mapState.panZ = 0;
+    mapState.zoom = fullWorldMapZoom(); mapState.panX = 0; mapState.panZ = 0;
     updateMapUI(); drawFullMap();
 });
 mapLockBtn.addEventListener('click', ()=>{
@@ -5511,9 +5745,35 @@ mapLockBtn.addEventListener('click', ()=>{
     updateMapUI();
 });
 
+function refreshStrikeOptions(){
+    if(!strikeOptions)return;strikeOptions.textContent='';
+    const selectable=WEAPONS.map((w,i)=>({w,i})).filter(({w,i})=>w.projectile&&w.blastType&&inventory[i]&&ammo[i]>0);
+    if(!selectable.some(x=>x.i===mapState.strikeWeapon))mapState.strikeWeapon=selectable[0]?.i??null;
+    for(const {w,i} of selectable){const b=document.createElement('button');b.className='strike-option'+(i===mapState.strikeWeapon?' selected':'');b.textContent=w.name+' · '+(ammo[i]>=9999?'∞':ammo[i]);b.onclick=()=>{mapState.strikeWeapon=i;refreshStrikeOptions();};strikeOptions.appendChild(b);}
+    if(!selectable.length)strikeOptions.textContent='No owned ordnance';
+}
+function toggleStrikeMode(){
+    if(!isMapOpen){showMessage('Open the map to schedule a remote strike');return;}
+    mapState.strikeMode=!mapState.strikeMode;webcam.placing=false;document.getElementById('map-webcam').classList.remove('active');mapStrikePanel.classList.toggle('open',mapState.strikeMode);document.getElementById('map-strike').classList.toggle('active',mapState.strikeMode);
+    if(mapState.strikeMode){refreshStrikeOptions();showMessage('REMOTE STRIKE · select ordnance and click target');}else showMessage('Strike targeting cancelled');
+}
+function queueMapStrikeFromMap(e){
+    const i=mapState.strikeWeapon,w=WEAPONS[i],p=mapWorldFromEvent(e),half=CFG.worldSize*.5;
+    if(!w||!inventory[i]||ammo[i]<=0){showMessage('Selected ordnance unavailable');refreshStrikeOptions();return;}
+    if(Math.abs(p.x)>half||Math.abs(p.z)>half){showMessage('Outside operational map');return;}
+    const delay=THREE.MathUtils.clamp(Number(strikeTimer.value)||0,0,300);
+    if(ammo[i]<9999)ammo[i]--;scheduledMapStrikes.push({x:p.x,z:p.z,blastType:w.blastType,name:w.name,at:performance.now()+delay*1000});
+    if(scheduledMapStrikes.length>12)scheduledMapStrikes.shift();updateWeaponUI();refreshStrikeOptions();showMessage(w.name+' strike scheduled · '+delay.toFixed(0)+' sec');drawFullMap();
+}
+function updateScheduledMapStrikes(now){for(let i=scheduledMapStrikes.length-1;i>=0;i--){const s=scheduledMapStrikes[i];if(now<s.at)continue;createExplosion(new THREE.Vector3(s.x,terrainHeightAt(s.x,s.z)+1,s.z),s.blastType);scheduledMapStrikes.splice(i,1);showMessage(s.name+' strike delivered');}}
+document.getElementById('map-layers').addEventListener('click',()=>mapLayersPanel.classList.toggle('open'));
+document.getElementById('map-webcam').addEventListener('click',toggleWebcamPlacement);
+document.getElementById('map-strike').addEventListener('click',toggleStrikeMode);
+document.querySelectorAll('[data-map-layer]').forEach(el=>el.addEventListener('change',()=>{mapLayers[el.dataset.mapLayer]=el.checked;drawFullMap();}));
+
 function onMapMouseDown(e){
     if(!isMapOpen) return;
-    if(e.target.closest('#map-toolbar')) return;
+    if(e.target.closest('#map-toolbar,#map-layer-panel,#map-strike-panel')) return;
     mapState.dragging = true;
     mapState.dragStartX = e.clientX;
     mapState.dragStartY = e.clientY;
@@ -5535,17 +5795,15 @@ function onMapMouseUp(e){
         fullMapCanvas.classList.remove('dragging');
         const dx = e.clientX - mapState.dragStartX;
         const dy = e.clientY - mapState.dragStartY;
-        if(Math.abs(dx) < 4 && Math.abs(dy) < 4 && !mapState.locked){
-            teleportFromMap(e);
+        if(Math.abs(dx)<4&&Math.abs(dy)<4){
+            if(webcam.placing)placeWebcamFromMap(e);
+            else if(mapState.strikeMode)queueMapStrikeFromMap(e);
+            else if(!mapState.locked)teleportFromMap(e);
         }
     }
 }
 function teleportFromMap(e){
-    const rect = fullMapCanvas.getBoundingClientRect();
-    const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
-    const W = fullMapCanvas.width, H = fullMapCanvas.height;
-    const wx = (cx - W/2) / mapState.zoom + mapState.panX;
-    const wz = (cy - H/2) / mapState.zoom + mapState.panZ;
+    const p=mapWorldFromEvent(e),wx=p.x,wz=p.z;
     const half = CFG.citySize/2 + 2000;
     if(Math.abs(wx) > half || Math.abs(wz) > half){ showMessage('Outside map'); return; }
     if(mode === 'car' || mode === 'bike' || mode === 'helicopter' || mode === 'jet') exitVehicle();
@@ -5560,10 +5818,9 @@ window.addEventListener('mousemove', onMapMouseMove);
 window.addEventListener('mouseup', onMapMouseUp);
 
 function toggleMap(){
-    isMapOpen = !isMapOpen;
-    fullMapLayer.style.display = isMapOpen ? 'block' : 'none';
-    if(isMapOpen){ controls.unlock(); drawFullMap(); updateMapUI(); }
-    else if(!isShopOpen && !isSettingsOpen) controls.lock();
+    isMapOpen=!isMapOpen;fullMapLayer.style.display=isMapOpen?'block':'none';
+    if(isMapOpen){controls.unlock();drawFullMap();updateMapUI();}
+    else{webcam.placing=false;mapState.strikeMode=false;mapLayersPanel.classList.remove('open');mapStrikePanel.classList.remove('open');document.getElementById('map-webcam').classList.remove('active');document.getElementById('map-strike').classList.remove('active');if(!isShopOpen&&!isSettingsOpen)controls.lock();}
 }
 
 // ─── SHOP / UI ───
@@ -5727,9 +5984,15 @@ document.addEventListener('keydown', (e)=>{
         return;
     }
     if(e.code === 'KeyO' || e.code === 'KeyK'){ openSettings(); return; }
+    if(e.code==='Equal'){toggleWebcamView();return;}
+    if(e.code==='KeyR'){if(isMapOpen||isShopOpen||isSettingsOpen)return;if(e.shiftKey)cyclePhotoPath();else togglePhotoMode();return;}
+    if(e.code==='Backslash'){if(isShopOpen||isSettingsOpen)return;e.preventDefault();if(!isMapOpen)toggleMap();toggleWebcamPlacement();return;}
+    if(isMapOpen&&e.code==='Minus'){e.preventDefault();toggleStrikeMode();return;}
     if((isMapOpen || isShopOpen || isSettingsOpen) && e.code !== 'Tab' && e.code !== 'KeyM') return;
     if(e.code === 'Tab'){ e.preventDefault(); openShop(); return; }
     if(e.code === 'KeyM'){ toggleMap(); return; }
+    if(webcam.viewing){const turn={ArrowLeft:[-.12,0],ArrowRight:[.12,0],ArrowUp:[0,.075],ArrowDown:[0,-.075]}[e.code];if(turn){e.preventDefault();turnWebcam(turn[0],turn[1]);}return;}
+    if(photoMode.active)return;
     if(isDead || !controls.isLocked) return;
     if(missileView && e.code!=='Semicolon') return;
     if(e.code === 'KeyP'){ deployParachute(); return; }
@@ -5868,26 +6131,16 @@ function updateSunVisibility(){ if(sunDiscEl) sunDiscEl.style.display='none'; }
 
 
 function applyTimeOfDay(hour){
-    timeOfDay = ((hour % 24) + 24) % 24;
-    const phase = (timeOfDay / 24) * Math.PI * 2;
-    const elev = Math.sin(phase - Math.PI/2);
-    const az = phase - Math.PI/2;
-    const sunStrength = THREE.MathUtils.clamp(elev * 2.0 + 0.18, 0.025, 2.5);
-    sun.position.set(Math.cos(az) * 420, Math.max(8, elev * 620 + 80), Math.sin(az) * 420);
+    timeOfDay=((hour%24)+24)%24;
+    const phase=(timeOfDay/24)*Math.PI*2,elev=Math.sin(phase-Math.PI/2),az=phase-Math.PI/2;
+    // Keep the solar vector physically below the horizon at night; it is never clamped upward.
+    sun.position.set(Math.cos(az)*720,elev*900,Math.sin(az)*720);
     skyUniforms.sunPosition.value.copy(sun.position).normalize();
-    atmosphereSky.material.uniforms.turbidity.value = THREE.MathUtils.lerp(9.5, 2.2, Math.max(0,elev));
-    atmosphereSky.material.uniforms.rayleigh.value = THREE.MathUtils.lerp(0.8, 2.8, Math.max(0,elev));
-    sun.intensity = sunStrength;
-    fillLight.intensity = THREE.MathUtils.lerp(0.10, 0.42, THREE.MathUtils.clamp(elev * 0.5 + 0.5, 0, 1));
-    bounceLight.intensity = THREE.MathUtils.lerp(0.04, 0.22, THREE.MathUtils.clamp(elev * 0.5 + 0.5, 0, 1));
-    const night = THREE.MathUtils.clamp((-elev + 0.18) / 1.18, 0, 1);
-    scene.background.setHSL(0.56, 0.34, THREE.MathUtils.lerp(0.06, 0.64, 1-night));
-    skyMesh.material.color.setHSL(0.57, 0.45, THREE.MathUtils.lerp(0.16, 1.0, 1-night));
-    scene.fog.color.setHSL(0.56, 0.28, THREE.MathUtils.lerp(0.09, 0.72, 1-night));
-    renderer.toneMappingExposure = THREE.MathUtils.lerp(0.72, 1.12, 1-night);
-    sunDisc3D.visible=elev>-0.08;
-    if(timeSlider) timeSlider.value = String(timeOfDay);
-    if(timeValEl) timeValEl.textContent = formatClock(timeOfDay);
+    atmosphereSky.material.uniforms.turbidity.value=THREE.MathUtils.lerp(10.8,2.2,Math.max(0,elev));
+    atmosphereSky.material.uniforms.rayleigh.value=THREE.MathUtils.lerp(.35,2.8,Math.max(0,elev));
+    applyClimateLighting();
+    if(timeSlider)timeSlider.value=String(timeOfDay);
+    if(timeValEl)timeValEl.textContent=formatClock(timeOfDay);
 }
 timeSlider.addEventListener('input', ()=>{
     applyTimeOfDay(parseFloat(timeSlider.value));
@@ -5899,8 +6152,9 @@ document.getElementById('settings-apply').addEventListener('click', ()=>{
     const npcCount = parseInt(document.getElementById('enemy-slider').value, 10);
     playerSpeed = speed;
     const gfx = document.getElementById('gfx-select').value;
-    const tod = parseFloat(document.getElementById('time-slider').value);
-    applyTimeOfDay(tod);
+    const tod=parseFloat(document.getElementById('time-slider').value),preset=document.getElementById('time-preset').value;
+    applyTimeOfDay(preset==='custom'?tod:{dawn:6.2,noon:12.5,golden:18.1,night:22.2}[preset]);
+    weather.setPreset(document.getElementById('weather-select').value);setAudioVolume(parseInt(document.getElementById('audio-volume').value,10)/100);subtitlesEnabled=document.getElementById('subtitles-toggle').checked;
     applyGraphicsMode(gfx);
     while(npcs.length < npcCount){
         // Maintain the population mix as the count is multiplied.
@@ -5920,7 +6174,10 @@ document.getElementById('settings-apply').addEventListener('click', ()=>{
     openSettings();
 });
 document.getElementById('speed-slider').addEventListener('input', function(){ document.getElementById('speed-val').textContent = this.value; });
-document.getElementById('enemy-slider').addEventListener('input', function(){ document.getElementById('enemy-val').textContent = this.value; });
+document.getElementById('enemy-slider').addEventListener('input', function(){ document.getElementById('enemy-val').textContent=this.value; });
+document.getElementById('audio-volume').addEventListener('input',function(){document.getElementById('audio-val').textContent=this.value+'%';setAudioVolume(parseInt(this.value,10)/100);});
+document.getElementById('time-preset').addEventListener('change',function(){const h={dawn:6.2,noon:12.5,golden:18.1,night:22.2}[this.value];if(h!==undefined)applyTimeOfDay(h);});
+document.getElementById('settings-benchmark').addEventListener('click',runGraphicsBenchmark);
 
 function teleportFromPortal(){
     if(mode !== 'walking' || isDead || teleportCooldown > 0) return;
@@ -6003,6 +6260,7 @@ async function loadSSAO(){
 }
 async function init(){
     try {
+        loadGameState();
         createWorldTerrain();
 
         const basePlane = new THREE.Mesh(
@@ -6020,14 +6278,14 @@ async function init(){
             ['roads', () => createRoadNetworks()],
             ['city', () => createCity()],
             ['town connectors', () => connectTownRoads()],
+            ['traffic graph', () => buildTrafficRoadGraph()],
             ['waypoints', () => buildSidewalkWaypoints()],
             ['terrain streaming', () => updateWorldNature(0,camera.position)],
             ['static batching', () => batchStaticMeshes()],
             ['clouds', () => createVolumetricClouds()],
             ['field waypoints', () => buildFieldWaypoints()],
             ['civilians', () => { spawnPopulation(); }],
-            ['enemies', () => { for(let i=0;i<CFG.enemyCount;i++) spawnNPC(false,true); }],
-            ['cops', () => { for(let i=0;i<CFG.copCount;i++) spawnNPC(true,false); }],
+            // Enemies and cops are included in each settlement's exact population allocation above.
             ['cars', () => { for(let i=0;i<CFG.carCount;i++) spawnCar(); for(let i=0;i<6;i++) spawnMotorbike(); }],
             ['highway traffic', () => spawnHighwayTraffic(VERY_LOW_MEM?10:DECENT_GPU?48:26)],
             ['aircraft', () => {
@@ -6051,6 +6309,7 @@ async function init(){
         if(!sidewalkWaypoints.length){
             sidewalkWaypoints.push({x:camera.position.x+8,z:camera.position.z+8},{x:camera.position.x-8,z:camera.position.z-8});
         }
+        applySavedWorldState();
         if(bootWarnings.length) throw new Error('World system failed: '+bootWarnings.join(', '));
 
         blocker.addEventListener('click', (e)=>{ if(e.target.closest('.key')) return; startGame(); });
@@ -6088,7 +6347,7 @@ async function init(){
 const _npcPos = new THREE.Vector3();
 function updateForestLOD(playerPos){
     if(!treeInstances)return;
-    const stamp=HIGHWAY_PATHS.length+':'+HIGHWAY_EXITS.length;
+    const stamp=surfaceWorld.revision;
     if(forestRoadStamp!==stamp){for(const t of forestTrees)if(!t.userData.dead&&!naturePointIsClear(t.position.x,t.position.z,3)){t.userData.dead=true;t.userData.natureBlocked=true;setTreeInstanceVisible(t,false);}forestRoadStamp=stamp;}
     if(forestLastPosition.distanceToSquared(playerPos)<6400&&forestRenderDistance===CFG.renderDistance)return;
     forestLastPosition.copy(playerPos);forestRenderDistance=CFG.renderDistance;
@@ -6107,7 +6366,9 @@ function animate(){
     const dt = Math.min(rawMs/1000, 0.04);
     prevTime = t;
     frameCount++;
-    updatePerformanceBudget(rawMs);
+    const photoFrame=updatePhotoMode(dt);
+    const webcamFrame=photoFrame?true:updateWebcamView(t);
+    updatePerformanceBudget(rawMs);updateGraphicsBenchmark(rawMs,t);
 
     camera.getWorldPosition(_cwp);
     const cwp = _cwp;
@@ -6118,14 +6379,15 @@ function animate(){
     teleportCooldown = Math.max(0, teleportCooldown - dt);
     if(bombCooldown > 0) bombCooldown = Math.max(0, bombCooldown - dt);
     if(crashDamageCooldown > 0) crashDamageCooldown = Math.max(0, crashDamageCooldown - dt);
+    updateScheduledMapStrikes(t);
 
     camera.getWorldPosition(_skyVec);
     skyMesh.position.copy(_skyVec);atmosphereSky.position.copy(_skyVec);
     const todPhase = (timeOfDay / 24) * Math.PI * 2;
     const todElev = Math.sin(todPhase - Math.PI/2);
     const todAz = todPhase - Math.PI/2;
-    const sunDir=new THREE.Vector3(Math.cos(todAz),Math.max(-.05,todElev),Math.sin(todAz)).normalize();
-    if(frameCount%3===0){sun.position.copy(_skyVec).addScaledVector(sunDir,1400);sun.target.position.copy(_skyVec);sunDisc3D.position.copy(_skyVec).addScaledVector(sunDir,SUN_DISTANCE);sunDisc3D.visible=todElev>-0.08;sun.target.updateMatrixWorld();}
+    const sunDir=new THREE.Vector3(Math.cos(todAz),todElev,Math.sin(todAz)).normalize();
+    if(frameCount%3===0){sun.position.copy(_skyVec).addScaledVector(sunDir,1400);sun.target.position.copy(_skyVec);sunDisc3D.position.copy(_skyVec).addScaledVector(sunDir,SUN_DISTANCE);moonDisc3D.position.copy(_skyVec).addScaledVector(sunDir,-SUN_DISTANCE);const ws=weather.state;sunDisc3D.visible=todElev>.02&&ws.sunVisibility>.30&&ws.rain<.24;sun.target.updateMatrixWorld();}starField.position.copy(_skyVec);
     if(frameCount % 8 === 0) updateSunVisibility();
 
     recoilOffset *= 0.82; recoilRot *= 0.82;
@@ -6342,7 +6604,7 @@ function animate(){
         }
         if(thirdPerson){ if(playerAvatar) playerAvatar.visible=false; tpHeadSaved=false; }
     }
-    else if(mode === 'walking' && !isDead){
+    else if(mode === 'walking' && !isDead && !webcam.viewing){
         thirdPersonRestoreHead();
         velocity.x -= velocity.x * 6.5 * dt;
         velocity.z -= velocity.z * 6.5 * dt;
@@ -6711,7 +6973,7 @@ function animate(){
         }
     }
 
-    if(mode === 'walking' && !parachuteActive && !isDead){
+    if(mode === 'walking' && !parachuteActive && !isDead && !webcam.viewing){
         const minCameraY = terrainHeightAt(camera.position.x, camera.position.z) + 1.58;
         if(camera.position.y < minCameraY){
             camera.position.y = minCameraY;
@@ -6721,7 +6983,7 @@ function animate(){
     }
 
     camera.getWorldPosition(_cwp);
-    updateWorldNature(dt,_cwp);updateTerrainScorches(dt);
+    weather.update(dt,_cwp);updateWorldNature(dt,_cwp);updateTerrainScorches(dt);
     updateCockpitVisibility();
     if(!jetpackMesh) createJetpackModel();
     jetpackMesh.visible=(jetpackOwned && jetpackActive && mode==='walking');
@@ -6732,11 +6994,9 @@ function animate(){
     if(frameCount % 12 === 0) updatePopulationLOD(cwp);
     if(frameCount % 24 === 0) updateHUD();
 
-    if(composer){
-        if(gradePass) gradePass.uniforms.uTime.value = t * 0.001;
-        composer.render(dt);
-    } else {
-        renderer.render(scene, camera);
+    if(!webcam.viewing||webcamFrame){
+        if(composer){if(gradePass)gradePass.uniforms.uTime.value=t*.001;composer.render(dt);}
+        else renderer.render(scene,camera);
     }
 }
 
@@ -6766,11 +7026,11 @@ function applyGraphicsMode(mode){
     sun.shadow.mapSize.set(sm,sm);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null;}
     scene.environment=pmremRT?pmremRT.texture:null;
     scene.fog.near=rd*.25;scene.fog.far=rd;
-    if(['high','ultra','cinematic','rtx','4k'].includes(mode))buildComposer(mode);
+    if(['high','ultra','cinematic','rtx','4k'].includes(mode))buildComposer(mode);sun.shadow.radius=mode==='4k'?.35:mode==='rtx'||mode==='cinematic'?.6:mode==='ultra'?1.0:1.45;
     resizeRenderer();
     if(realismFX)realismFX.setFogFar(rd);
 }
-function resizeRenderer(){camera.aspect=innerWidth/innerHeight;camera.near=.12;camera.far=Math.max(CFG.renderDistance+800,20500);camera.updateProjectionMatrix();renderer.setPixelRatio(budgetPixelRatio());renderer.setSize(innerWidth,innerHeight);if(composer)composer.setSize(innerWidth,innerHeight);}
+function resizeRenderer(){camera.aspect=innerWidth/innerHeight;camera.near=.12;camera.far=Math.max(CFG.renderDistance+800,20500);camera.updateProjectionMatrix();const pixelRatio=webcam.viewing?Math.min(.36,budgetPixelRatio()):budgetPixelRatio();renderer.setPixelRatio(pixelRatio);renderer.setSize(innerWidth,innerHeight);if(composer)composer.setSize(innerWidth,innerHeight);}
 function updatePerformanceBudget(rawMs){
     if(!Number.isFinite(rawMs)||rawMs<=0||rawMs>1000)return;
     const p=performanceBudget;p.times[p.cursor++%120]=rawMs;p.samples=Math.min(120,p.samples+1);p.elapsed+=rawMs;p.frames++;
@@ -6785,6 +7045,17 @@ function updatePerformanceBudget(rawMs){
     fpsCounterEl.textContent=Math.round(p.fps)+' FPS · '+Math.round(budgetPixelRatio()*100)+'%';fpsCounterEl.title='Measured frame rate · internal resolution. P95 '+p.p95.toFixed(1)+' ms. Target 60 FPS, hardware dependent.';
     p.elapsed=0;p.frames=0;
 }
+function runBrowserVisualRegression(){
+    const result={shaderCompile:false,terrain:false,textures:false,clouds:false,map:false,explosion:false,errors:[]};
+    try{renderer.compile(scene,camera);result.shaderCompile=true;}catch(e){result.errors.push('shader: '+e.message);}
+    result.terrain=worldNature.active.size>0&&worldNature.tiles.every(t=>!t.mesh.material.transparent&&t.mesh.material.depthWrite);
+    result.textures=!!(groundBaseTex&&houseSidingTex&&roofShingleTex&&buildingMats.house.map===houseSidingTex&&buildingMats.roof.map===roofShingleTex)&&[...worldNature.active.values()].every(t=>t.mesh.material.map===t.surfaceTexture&&t.mesh.geometry.getAttribute('uv')&&t.surfaceTexture);
+    result.clouds=!!(worldNature.cloudMaterial&&worldNature.clouds[0]&&worldNature.clouds[0].visible&&worldNature.cirrusMesh?.visible);
+    result.map=TOPO_RANGE===CFG.worldSize*.5&&fullWorldMapZoom()>0;
+    try{const before=realismFX?realismFX.stats().smoke:0,p=camera.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0,0,-180));createExplosion(p,'rocket');updatePooledEffects(.1);if(realismFX)realismFX.update(.1);result.explosion=(realismFX?realismFX.stats().smoke:0)>before;}catch(e){result.errors.push('explosion: '+e.message);}
+    result.pass=result.shaderCompile&&result.terrain&&result.textures&&result.clouds&&result.map&&result.explosion&&!result.errors.length;return result;
+}
+
 function gameDiagnostics(){return {
     fps:Math.round(performanceBudget.fps*10)/10,p95ms:Math.round(performanceBudget.p95*10)/10,renderScale:budgetPixelRatio(),calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,
     memory:renderer.info.memory,jsHeapMB:performance.memory?Math.round(performance.memory.usedJSHeapSize/1048576):null,
@@ -6803,14 +7074,15 @@ if(new URLSearchParams(location.search).has('test'))Object.assign(window.CityStr
     tick:(dt)=>{updateQueuedExplosionGameplay(dt);updatePooledEffects(dt);if(realismFX)realismFX.update(dt);updateDebrisPanels(dt);},
     realism:()=>realismFX&&realismFX.stats(),
     burst:(x,y,z,count=400)=>{for(let i=0;i<count;i++)spawnParticle({pos:new THREE.Vector3(x,y,z),size:2,color:0x777777,life:2,opacity:.2,fluid:true,buoyancy:.3});},
-    quality:applyGraphicsMode
+    quality:applyGraphicsMode,
+    browserRegression:runBrowserVisualRegression,webcam,scheduledMapStrikes,weather
 });
 renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();loadingText.style.display='block';loadingText.textContent='Graphics paused — waiting for the device to recover…';});
 renderer.domElement.addEventListener('webglcontextrestored',()=>location.reload());
 document.addEventListener('visibilitychange',()=>{prevTime=performance.now();releaseMovementInput();});
 
 function updatePopulationLOD(playerPos){
- const npcd=VERY_LOW_MEM?200:LOW_MEM?420:620;for(const n of npcs){if(!n.userData.dead)n.visible=n.position.distanceToSquared(playerPos)<npcd*npcd;}
+ const npcd=VERY_LOW_MEM?280:LOW_MEM?700:1100;for(const n of npcs){if(!n.userData.dead)n.visible=n.position.distanceToSquared(playerPos)<npcd*npcd;}
  const card=VERY_LOW_MEM?1600:LOW_MEM?2600:3400;for(const c of cars)c.visible=c===currentVehicle||c.position.distanceToSquared(playerPos)<card*card;
  for(const h of helicopters)h.visible=h===currentVehicle||h.position.distanceToSquared(playerPos)<3400*3400;
  for(const j of jets)j.visible=j===currentVehicle||j.position.distanceToSquared(playerPos)<7000*7000;
