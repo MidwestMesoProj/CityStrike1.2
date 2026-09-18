@@ -207,7 +207,7 @@ body{overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:#1a2
     <div class="legend-item"><div class="dot" style="background:#f0b060"></div>Pickup</div>
   </div>
 </div>
-<div id="webcam-overlay"></div><div id="webcam-status">REMOTE WEBCAM · 2 FPS<br>SECURE OBSERVER</div><div id="subtitle-box"></div>
+<div id="webcam-overlay"></div><div id="webcam-status">REMOTE WEBCAM · 2 FPS<br>ARROWS · PAN / TILT</div><div id="subtitle-box"></div>
 <div id="ui-layer">
 <div id="crosshair"></div>
 <div id="heli-ring"></div>
@@ -231,7 +231,7 @@ body{overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:#1a2
 <div id="flight-hud"><strong id="flight-values"></strong><small>W/S throttle · A/D bank / taxi<br>Space nose up · Shift nose down · X boost<br>Takeoff: full throttle, then Space above 60 m/s.<br>Stall: lower nose, add power. E exit · P parachute</small></div>
 <div id="touch-controls"><div id="touch-look">DRAG TO LOOK</div><div id="touch-move"><span></span><button data-key="KeyW">W</button><span></span><button data-key="KeyA">A</button><button data-key="KeyS">S</button><button data-key="KeyD">D</button></div><div id="touch-actions"><button data-key="Space">UP</button><button data-key="ShiftLeft">DOWN</button><button data-key="KeyE">ENTER</button><button data-key="KeyX">BOOST</button><button data-key="KeyC">2.5x</button><button data-key="KeyF">6x</button><button data-key="KeyP">CHUTE</button><button data-key="KeyB">BOMB</button><button data-key="Fire">FIRE</button></div></div>
 <div id="minimap-container"><canvas id="minimap" width="150" height="150"></canvas></div>
-<div id="controls-hint">WASD · SHIFT sprint/descend · SPACE jump/ascend/car brake · JET: W/S throttle, A/D bank, SPACE/SHIFT pitch · X boost · C 2.5x · F 6x · B bomb · H aircraft-enter · CLICK shoot · SCROLL switch · 1-0 weapons · [ ] Cluster/Thermo · J camera · R photo orbit · E enter/exit · P parachute · M map · \ webcam · = view webcam · − map strike · TAB shop · K/O settings · V jetpack · SHIFT+/ ammo cheat</div>
+<div id="controls-hint">WASD · SHIFT sprint/descend · SPACE jump/ascend/car brake · JET: W/S throttle, A/D bank, SPACE/SHIFT pitch · X boost · C 2.5x · F 6x · B bomb · H aircraft-enter · CLICK shoot · SCROLL switch · 1-0 weapons · [ ] Cluster/Thermo · J camera · R photo orbit · E enter/exit · P parachute · M map · \ webcam · = webcam · arrows pan / tilt · − map strike · TAB shop · K/O settings · V jetpack · SHIFT+/ ammo cheat</div>
 <div id="settings-btn" title="Settings (O)">⚙</div>
 <div id="store-btn">$ SHOP</div>
 <div id="shop-panel">
@@ -464,7 +464,7 @@ function terrainHeightAt(x, z){
 }
 
 // Camera-centered clip rings: 16 inner tiles, then six 12-tile rings, 8-512m samples.
-const worldNature={tiles:[],active:new Map(),pending:null,signature:'',center:new THREE.Vector3(),time:{value:0},wetness:{value:0},generationBudgetMs:2.5,maxRowsPerFrame:160,grassBudget:140,grass:null,clouds:[]};
+const worldNature={tiles:[],active:new Map(),pending:null,signature:'',center:new THREE.Vector3(),time:{value:0},wetness:{value:0},night:{value:0},generationBudgetMs:2.5,maxRowsPerFrame:160,grassBudget:140,grass:null,clouds:[]};
 function getNatureNoise(){
     if(worldNature.noise)return worldNature.noise;
     const n=128,data=new Uint8Array(n*n*4);
@@ -494,7 +494,7 @@ function createRoadSegment(ax,az,bx,bz,width,mat,shoulder){
 }
 function createRoadPath(points,width){for(let i=1;i<points.length;i++)createRoadSegment(points[i-1].x,points[i-1].z,points[i].x,points[i].z,width);}
 function roadClearAt(x,z,pad=0){const reach=Math.max(1,pad+3),near=surfaceQuery(surfaceWorld.roadCells,x-reach,z-reach,reach*2,reach*2);for(const r of near)if(natureSegmentDistance(x,z,r.ax,r.az,r.bx,r.bz)<r.width*.5+pad+3)return false;return true;}
-function naturePointIsClear(x,z,pad=1){return roadClearAt(x,z,pad)&&!pointIsBlocked(x,z,pad);}
+function naturePointIsClear(x,z,pad=1){return roadClearAt(x,z,pad+6)&&!pointIsBlocked(x,z,pad);}
 function buildIrregularRoadNetwork(){
     // Grid streets plus diagonal boulevards, two ring roads and varied road
     // widths — every city gets a diverse, connected network.
@@ -573,7 +573,7 @@ function createWorldTerrain(){
     if(worldNature.material)return;
     worldNature.grassColor=new THREE.Color(0x718450);worldNature.soilColor=new THREE.Color(0x9a8767);worldNature.rockColor=new THREE.Color(0x7b817c);worldNature.snowColor=new THREE.Color(0xd9dedb);worldNature.color=new THREE.Color();
     worldNature.scorches={value:Array.from({length:8},()=>new THREE.Vector4(0,0,0,0))};
-    const mat=makeEfficientMaterial({vertexColors:true,roughness:.97,metalness:0,envMapIntensity:.22,side:THREE.DoubleSide,transparent:false,opacity:1,depthWrite:true,depthTest:true});
+    const mat=makeEfficientMaterial({vertexColors:true,map:groundBaseTex,roughness:.97,metalness:0,envMapIntensity:.22,side:THREE.DoubleSide,transparent:false,opacity:1,depthWrite:true,depthTest:true});
     mat.onBeforeCompile=function(s){s.uniforms.natureNoise={value:getNatureNoise()};s.uniforms.surfaceMap={value:this.userData.surfaceTexture};s.uniforms.surfaceWetness=worldNature.wetness;s.uniforms.scorches=worldNature.scorches;
         s.vertexShader=s.vertexShader.replace('#include <common>','#include <common>\nattribute float natureRural;attribute vec2 surfaceUV;varying vec2 vSurfaceUV;varying vec3 vNatureWorld;varying float vNatureRural;').replace('#include <begin_vertex>','#include <begin_vertex>\nvNatureWorld=(modelMatrix*vec4(transformed,1.)).xyz;vSurfaceUV=surfaceUV;vNatureRural=natureRural;');
         s.fragmentShader=s.fragmentShader.replace('#include <common>','#include <common>\nuniform sampler2D natureNoise;uniform sampler2D surfaceMap;uniform float surfaceWetness;uniform vec4 scorches[8];varying vec2 vSurfaceUV;varying vec3 vNatureWorld;varying float vNatureRural;').replace('#include <color_fragment>',`#include <color_fragment>
@@ -587,12 +587,12 @@ function createWorldTerrain(){
             for(int k=0;k<8;k++){vec4 sc=scorches[k];float scar=(1.-smoothstep(sc.z*.25,max(.01,sc.z),distance(vNatureWorld.xz,sc.xy)))*sc.w;diffuseColor.rgb*=1.-scar*.78;}
             diffuseColor.a=1.;`);
     };
-    mat.customProgramCacheKey=()=> 'solid-ground-v3';worldNature.material=mat;
+    mat.customProgramCacheKey=()=> 'solid-ground-v4';worldNature.material=mat;
     const indices=[],edges=[[],[],[],[]];for(let z=0;z<16;z++)for(let x=0;x<16;x++){const a=z*17+x;indices.push(a,a+17,a+1,a+1,a+17,a+18);}for(let i=0;i<=16;i++){edges[0].push(i);edges[1].push(i*17+16);edges[2].push(288-i);edges[3].push((16-i)*17);}for(let e=0;e<4;e++)for(let i=0;i<16;i++){const a=edges[e][i],b=edges[e][i+1],lo=289+e*17+i;indices.push(a,b,lo,b,lo+1,lo);}worldNature.edges=edges;worldNature.index=new THREE.Uint16BufferAttribute(indices,1);
 }
 function allocateNatureTile(){
     const g=new THREE.BufferGeometry();g.setIndex(worldNature.index);for(const name of ['position','normal','color'])g.setAttribute(name,new THREE.BufferAttribute(new Float32Array(357*3),3).setUsage(THREE.DynamicDrawUsage));g.setAttribute('natureRural',new THREE.BufferAttribute(new Float32Array(357),1).setUsage(THREE.DynamicDrawUsage));
-    const uv=new Float32Array(357*2);for(let z=0;z<=16;z++)for(let x=0;x<=16;x++){const i=z*17+x;uv[i*2]=x/16;uv[i*2+1]=1-z/16;}for(let e=0;e<4;e++)for(let j=0;j<=16;j++){const src=worldNature.edges[e][j],dst=289+e*17+j;uv[dst*2]=uv[src*2];uv[dst*2+1]=uv[src*2+1];}g.setAttribute('surfaceUV',new THREE.BufferAttribute(uv,2));
+    const uv=new Float32Array(357*2);for(let z=0;z<=16;z++)for(let x=0;x<=16;x++){const i=z*17+x;uv[i*2]=x/16;uv[i*2+1]=1-z/16;}for(let e=0;e<4;e++)for(let j=0;j<=16;j++){const src=worldNature.edges[e][j],dst=289+e*17+j;uv[dst*2]=uv[src*2];uv[dst*2+1]=uv[src*2+1];}g.setAttribute('surfaceUV',new THREE.BufferAttribute(uv,2));g.setAttribute('uv',new THREE.BufferAttribute(uv.slice(),2));
     const canvas=document.createElement('canvas');canvas.width=canvas.height=128;const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;tex.anisotropy=Math.min(2,MAX_ANISO);tex.minFilter=THREE.LinearMipmapLinearFilter;
     const mat=worldNature.material.clone();mat.userData.surfaceTexture=tex;mat.onBeforeCompile=worldNature.material.onBeforeCompile;mat.customProgramCacheKey=worldNature.material.customProgramCacheKey;
     const mesh=new THREE.Mesh(g,mat);mesh.name='Opaque terrain tile';mesh.visible=false;mesh.receiveShadow=true;mesh.matrixAutoUpdate=false;scene.add(mesh);const tile={mesh,canvas,surfaceTexture:tex,heights:new Float64Array(19*19),row:0};worldNature.tiles.push(tile);return tile;
@@ -608,17 +608,18 @@ function createVolumetricClouds(){
     // billboard puffs — a flat dark underside plus stacked cauliflower domes.
     // Puffs wrap on an infinite tiled span around the camera.
     const SPAN=56000; worldNature.cloudSpan=SPAN;
-    const CLOUDS=VERY_LOW_MEM?40:LOW_MEM?80:150;
-    const PUFF_CAP=VERY_LOW_MEM?1100:LOW_MEM?3200:7400;
+    const CLOUDS=VERY_LOW_MEM?18:LOW_MEM?34:56;
+    // Fewer high-detail sprites than before: a separate low deck gives weather coverage cheaply.
+    const PUFF_CAP=VERY_LOW_MEM?900:LOW_MEM?2200:3400;
     const geo=new THREE.PlaneGeometry(2,2);
     const light={value:1},sunTint={value:sun.color.clone()},fogTint={value:scene.fog.color.clone()},fogFar={value:CFG.renderDistance};
     const uniforms={noiseAtlas:{value:getNatureNoise()},natureTime:worldNature.time,light,sunTint,fogTint,fogFar,
-        uInCloud:{value:0},cloudCover:{value:1},cloudSpan:{value:SPAN},wind:{value:new THREE.Vector2()}};
+        uInCloud:{value:0},cloudCover:{value:1},stormAmount:{value:0},cloudSpan:{value:SPAN},wind:{value:new THREE.Vector2()}};
     worldNature.cloudMaterial={uniforms};
-    const vert=`attribute float iSeed; attribute float iScale; attribute float iDark;
+    const vert=`attribute float iSeed; attribute float iScale; attribute float iDark; attribute float iStorm;
         uniform float cloudSpan; uniform vec2 wind;
-        varying vec2 vUv; varying float vSeed; varying float vDark; varying vec3 vW;
-        void main(){ vUv=position.xy; vSeed=iSeed; vDark=iDark;
+        varying vec2 vUv; varying float vSeed; varying float vDark; varying float vStorm; varying vec3 vW;
+        void main(){ vUv=position.xy; vSeed=iSeed; vDark=iDark; vStorm=iStorm;
             vec4 c=modelMatrix*instanceMatrix*vec4(0.,0.,0.,1.);
             vec3 w=c.xyz;
             vec2 rel=w.xz-cameraPosition.xz+wind;
@@ -628,8 +629,8 @@ function createVolumetricClouds(){
             vec4 vp=viewMatrix*vec4(w,1.);
             vp.xy+=position.xy*iScale;
             gl_Position=projectionMatrix*vp; }`;
-    const frag=`uniform sampler2D noiseAtlas; uniform float light,fogFar,uInCloud,cloudCover; uniform vec3 sunTint,fogTint;
-        varying vec2 vUv; varying float vSeed; varying float vDark; varying vec3 vW;
+    const frag=`uniform sampler2D noiseAtlas; uniform float light,fogFar,uInCloud,cloudCover,stormAmount; uniform vec3 sunTint,fogTint;
+        varying vec2 vUv; varying float vSeed; varying float vDark; varying float vStorm; varying vec3 vW;
         void main(){
             vec2 q=vUv*.5+.5;
             float n1=texture2D(noiseAtlas,fract(q*.9+vec2(vSeed*.131,vSeed*.073))).r;
@@ -648,7 +649,7 @@ function createVolumetricClouds(){
             col=mix(col,fogTint,fogf*.85);
             col=mix(col,mix(vec3(1.),fogTint,.28),uInCloud);
             float nearFade=1.-smoothstep(140.,2400.,d);
-            float a=shape*(1.-fogf)*mix(1.,.4,nearFade)*(1.+uInCloud*1.6)*(1.-vDark*.28)*cloudCover;
+            float weatherCover=mix(cloudCover,stormAmount,vStorm);float a=shape*(1.-fogf)*mix(1.,.4,nearFade)*(1.+uInCloud*1.6)*(1.-vDark*.28)*weatherCover;
             gl_FragColor=vec4(clamp(col,0.,1.25),clamp(a,0.,.96));
             #include <tonemapping_fragment>
             #include <colorspace_fragment> }`;
@@ -657,37 +658,47 @@ function createVolumetricClouds(){
     mesh.frustumCulled=false;mesh.renderOrder=3;
     const seedA=new THREE.InstancedBufferAttribute(new Float32Array(PUFF_CAP),1);
     const scaleA=new THREE.InstancedBufferAttribute(new Float32Array(PUFF_CAP),1);
-    const darkA=new THREE.InstancedBufferAttribute(new Float32Array(PUFF_CAP),1);
-    geo.setAttribute('iSeed',seedA);geo.setAttribute('iScale',scaleA);geo.setAttribute('iDark',darkA);
+    const darkA=new THREE.InstancedBufferAttribute(new Float32Array(PUFF_CAP),1),stormA=new THREE.InstancedBufferAttribute(new Float32Array(PUFF_CAP),1);
+    geo.setAttribute('iSeed',seedA);geo.setAttribute('iScale',scaleA);geo.setAttribute('iDark',darkA);geo.setAttribute('iStorm',stormA);
     const H=new THREE.Matrix4().makeScale(0,0,0);
     for(let i=0;i<PUFF_CAP;i++)mesh.setMatrixAt(i,H);
     scene.add(mesh);
     const dmy=new THREE.Object3D(); let used=0; const centers=[];
-    function puff(x,y,z,s,dark){ if(used>=PUFF_CAP)return;
+    function puff(x,y,z,s,dark,storm=0){ if(used>=PUFF_CAP)return;
         dmy.position.set(x,y,z);dmy.rotation.set(0,0,0);dmy.scale.setScalar(1);dmy.updateMatrix();
         mesh.setMatrixAt(used,dmy.matrix);
-        const sd=Math.random()*40; seedA.setX(used,sd);scaleA.setX(used,s);darkA.setX(used,dark); used++; }
+        const sd=Math.random()*40; seedA.setX(used,sd);scaleA.setX(used,s);darkA.setX(used,dark);stormA.setX(used,storm); used++; }
+    // A tiled low cumuliform deck occupies large patches in rain/storm. It is preallocated,
+    // but entirely transparent until precipitation raises stormAmount.
+    const deckCells=15,deckStep=SPAN/deckCells;
+    for(let gz=-7;gz<=7;gz++)for(let gx=-7;gx<=7;gx++){
+        const cx=gx*deckStep,cz=gz*deckStep,jx=(hash2(gx,gz)-.5)*520,jz=(hash2(gz,gx+91)-.5)*520;
+        const base=360+hash2(gx+19,gz+71)*145;
+        puff(cx+jx,base,cz+jz,1080+hash2(gx,gz+9)*380,1,1);
+        puff(cx-jx*.36,base+105+hash2(gz,gx+5)*130,cz-jz*.36,720+hash2(gx+7,gz)*260,.68,1);
+        if(((gx+gz)&1)===0)puff(cx+jx*.2,base+250,cz+jz*.2,420+hash2(gx+4,gz+3)*190,.28,1);
+    }
     for(let c=0;c<CLOUDS;c++){
         const cx=(Math.random()-.5)*SPAN, cz=(Math.random()-.5)*SPAN;
         const base=650+Math.random()*300, rx=230+Math.random()*480, rz=150+Math.random()*320;
         const top=base+170+Math.random()*300;
         centers.push({x:cx,z:cz,base,top,rx,rz});
         // Flat dark underside: a ragged sheet of wide puffs at cloud base.
-        const nb=10+((Math.random()*14)|0);
+        const nb=5+((Math.random()*6)|0);
         for(let i=0;i<nb;i++){ const a=Math.random()*6.283, rr=Math.sqrt(Math.random());
             puff(cx+Math.cos(a)*rx*rr, base+(Math.random()-.5)*24, cz+Math.sin(a)*rz*rr, 70+Math.random()*95, 1); }
         // Cauliflower domes: stacked shrinking rings of bright puffs.
-        const heaps=4+((Math.random()*4)|0);
+        const heaps=2+((Math.random()*2)|0);
         for(let h=0;h<heaps;h++){ const a=Math.random()*6.283, rr=Math.sqrt(Math.random());
             const hx=cx+Math.cos(a)*rx*rr, hz=cz+Math.sin(a)*rz*rr;
-            const hr=85+Math.random()*150, hh=hr*(.9+Math.random()*.75);
-            const rings=[[6,1,.42],[5,.66,.32],[3,.36,.24],[1,.12,.2]];
+            const hr=95+Math.random()*120, hh=hr*(.9+Math.random()*.75);
+            const rings=[[4,1,.48],[3,.56,.34],[1,.18,.22]];
             for(const [n,radF,sF] of rings){ for(let i=0;i<n;i++){ const aa=n===1?0:i/n*6.283+h;
                 puff(hx+Math.cos(aa)*hr*radF, base+hh*(1-radF*.55)+(Math.random()-.5)*22, hz+Math.sin(aa)*hr*radF*.72, hr*sF*(.8+Math.random()*.4), radF<.3?0:0+ (radF===1?1:0)); } }
             puff(hx, base+hh, hz, hr*.22, 0);
         }
     }
-    mesh.instanceMatrix.needsUpdate=true;seedA.needsUpdate=true;scaleA.needsUpdate=true;darkA.needsUpdate=true;
+    mesh.instanceMatrix.needsUpdate=true;seedA.needsUpdate=true;scaleA.needsUpdate=true;darkA.needsUpdate=true;stormA.needsUpdate=true;
     worldNature.clouds=[mesh]; worldNature.cloudCenters=centers;
     // One high cirrus sheet for altitude flying (genuinely layered by nature).
     const cGeo=new THREE.PlaneGeometry(40000,40000);cGeo.rotateX(-Math.PI/2);
@@ -829,10 +840,10 @@ skyUniforms.turbidity.value=5.2; skyUniforms.rayleigh.value=2.1; skyUniforms.mie
 const _skyVec = new THREE.Vector3();
 
 // Deep-sky detail: stable star field and a physical moon disc follow the viewer.
-const starCount=520,starPositions=new Float32Array(starCount*3),starColors=new Float32Array(starCount*3);
+const starCount=1100,starPositions=new Float32Array(starCount*3),starColors=new Float32Array(starCount*3);
 for(let i=0;i<starCount;i++){const u=Math.random()*2-1,a=Math.random()*Math.PI*2,r=14500,flat=Math.sqrt(1-u*u),j=i*3;starPositions[j]=Math.cos(a)*flat*r;starPositions[j+1]=u*r;starPositions[j+2]=Math.sin(a)*flat*r;const v=.62+Math.random()*.38;starColors[j]=v;starColors[j+1]=v;starColors[j+2]=Math.min(1,v*1.16);}
 const starGeo=new THREE.BufferGeometry();starGeo.setAttribute('position',new THREE.BufferAttribute(starPositions,3));starGeo.setAttribute('color',new THREE.BufferAttribute(starColors,3));
-const starMaterial=new THREE.PointsMaterial({size:8,vertexColors:true,transparent:true,opacity:0,depthWrite:false,sizeAttenuation:false});const starField=new THREE.Points(starGeo,starMaterial);starField.renderOrder=-50;starField.frustumCulled=false;scene.add(starField);
+const starMaterial=new THREE.PointsMaterial({size:1.15,vertexColors:true,transparent:true,opacity:0,depthWrite:false,sizeAttenuation:false});const starField=new THREE.Points(starGeo,starMaterial);starField.renderOrder=-50;starField.frustumCulled=false;scene.add(starField);
 const moonDisc3D=new THREE.Mesh(new THREE.SphereGeometry(34,18,12),new THREE.MeshBasicMaterial({color:0xd9e7ff,fog:false,depthWrite:false,transparent:true,opacity:0}));moonDisc3D.renderOrder=-1;scene.add(moonDisc3D);
 
 // ─── ENVIRONMENT ───
@@ -871,8 +882,9 @@ try {
 } catch(e){ console.warn('PMREM env failed:', e); }
 
 // ─── LIGHTS ───
-scene.add(new THREE.AmbientLight(0x8fbcdc, 0.32));
-scene.add(new THREE.HemisphereLight(0xa8d8ff, 0x33462f, 0.48));
+const ambientLight=new THREE.AmbientLight(0x8fbcdc,.32);scene.add(ambientLight);
+const hemisphereLight=new THREE.HemisphereLight(0xa8d8ff,0x33462f,.48);scene.add(hemisphereLight);
+const cityLightMaterials=[];
 const sceneFill = new THREE.DirectionalLight(0xb8d8ff,0.10);
 sceneFill.position.set(0,320,-180); scene.add(sceneFill);
 
@@ -908,14 +920,35 @@ scene.add(bounceLight);
 // ─── WEATHER CONTROLLER ───
 // Weather is a lightweight scene controller: it changes wind, cloud opacity,
 // fog, wet road colour and a camera-centred rain field without allocating per frame.
+function applyClimateLighting(){
+    const phase=(timeOfDay/24)*Math.PI*2,elev=Math.sin(phase-Math.PI/2),day=THREE.MathUtils.smoothstep(elev,-.18,.26),night=1-day;
+    const w=(typeof weather!=='undefined'&&weather.state)?weather.state:{rain:0,cover:0,sunVisibility:1},sunVisibility=Number.isFinite(w.sunVisibility)?w.sunVisibility:1;
+    worldNature.night.value=night;
+    sun.intensity=Math.max(0,elev)*2.75*sunVisibility;
+    ambientLight.intensity=THREE.MathUtils.lerp(.018,.31,day)*(0.52+.48*sunVisibility);
+    hemisphereLight.intensity=THREE.MathUtils.lerp(.055,.48,day)*(0.58+.42*sunVisibility);
+    sceneFill.intensity=THREE.MathUtils.lerp(.012,.42,day)*(0.45+.55*sunVisibility);
+    fillLight.intensity=THREE.MathUtils.lerp(.018,.42,day)*(0.48+.52*sunVisibility);
+    bounceLight.intensity=THREE.MathUtils.lerp(.012,.22,day)*(0.5+.5*sunVisibility);
+    const skyLight=THREE.MathUtils.lerp(.018,.70,day)*(0.40+.60*sunVisibility),storm=w.rain||0;
+    scene.background.setHSL(THREE.MathUtils.lerp(.62,.56,storm),THREE.MathUtils.lerp(.38,.18,storm),skyLight*.20);
+    skyMesh.material.color.setHSL(THREE.MathUtils.lerp(.62,.57,storm),THREE.MathUtils.lerp(.48,.28,storm),skyLight);
+    scene.fog.color.setHSL(THREE.MathUtils.lerp(.62,.56,storm),THREE.MathUtils.lerp(.26,.12,storm),Math.max(.025,skyLight*.82));
+    atmosphereSky.visible=night<.72&&storm<.18;
+    renderer.toneMappingExposure=THREE.MathUtils.lerp(.62,1.08,day)*(0.86+.14*sunVisibility);
+    sunDisc3D.visible=elev>.02&&sunVisibility>.30&&storm<.24;sunDisc3D.material.opacity=sunDisc3D.visible?Math.min(.98,sunVisibility*1.25):0;
+    starMaterial.opacity=night*.9*(1-storm*.72)*(1-(w.cover||0)*.22);moonDisc3D.material.opacity=night*.92*(1-storm*.72);
+    for(const entry of cityLightMaterials)entry.material.emissiveIntensity=entry.day+(entry.night-entry.day)*night;
+}
+
 function createWeatherController(){
-    const count=VERY_LOW_MEM?180:LOW_MEM?420:900,positions=new Float32Array(count*6),drops=[];
+    const count=VERY_LOW_MEM?260:LOW_MEM?700:1250,positions=new Float32Array(count*6),drops=[];
     const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(positions,3));
-    const rain=new THREE.LineSegments(geo,new THREE.LineBasicMaterial({color:0x9fd4ef,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending}));
+    const rain=new THREE.LineSegments(geo,new THREE.LineBasicMaterial({color:0xb9d9e8,transparent:true,opacity:0,depthWrite:false}));
     rain.frustumCulled=false;rain.renderOrder=7;scene.add(rain);
-    for(let i=0;i<count;i++)drops.push({x:Infinity,z:Infinity,y:0,len:4+Math.random()*8,fall:36+Math.random()*28});
+    for(let i=0;i<count;i++)drops.push({x:Infinity,z:Infinity,y:0,len:.65+Math.random()*1.25,fall:11+Math.random()*7});
     const profiles={clear:{cover:.52,rain:0,wet:0,fog:1,wind:2.4,turbidity:3.4},cloudy:{cover:.84,rain:0,wet:.08,fog:.82,wind:5.2,turbidity:6.8},rain:{cover:1,rain:.64,wet:.72,fog:.58,wind:8.5,turbidity:9.5},storm:{cover:1,rain:1,wet:1,fog:.40,wind:15,turbidity:12.5}};
-    const state={preset:'clear',cover:.52,rain:0,wetness:0,fog:1,wind:2.4,turbidity:3.4,lastWetPaint:-1,lastRainSound:0};
+    const state={preset:'clear',cover:.52,rain:0,wetness:0,fog:1,wind:2.4,turbidity:3.4,sunVisibility:1,lastWetPaint:-1,lastRainSound:0};
     function setPreset(name){
         state.preset=profiles[name]?name:'clear';
         const control=document.getElementById('weather-select');if(control)control.value=state.preset;
@@ -931,7 +964,7 @@ function createWeatherController(){
         const now=performance.now()*.001,windX=Math.sin(now*.11)*state.wind,windZ=Math.cos(now*.073)*state.wind*.58;
         window.cityStrikeWind={x:windX,z:windZ};
         worldNature.wetness.value=state.wetness;
-        if(worldNature.cloudMaterial){const u=worldNature.cloudMaterial.uniforms;if(u.cloudCover)u.cloudCover.value=state.cover;}
+        if(worldNature.cloudMaterial){const u=worldNature.cloudMaterial.uniforms;if(u.cloudCover)u.cloudCover.value=state.cover;if(u.stormAmount)u.stormAmount.value=state.rain;}
         if(worldNature.cloudSlices)for(const m of worldNature.cloudSlices)if(m.uniforms.cloudCover)m.uniforms.cloudCover.value=state.cover;
         const light=THREE.MathUtils.clamp(Math.sin((timeOfDay/24)*Math.PI*2-Math.PI/2)*.5+.5,0,1);
         skyUniforms.turbidity.value=THREE.MathUtils.lerp(2.5,state.turbidity,Math.max(state.cover*.65,state.rain));
@@ -940,11 +973,14 @@ function createWeatherController(){
         scene.fog.far=Math.max(420,CFG.renderDistance*state.fog);
         scene.fog.near=Math.max(80,scene.fog.far*.19);
         scene.fog.color.setHSL(.56,THREE.MathUtils.lerp(.24,.12,state.rain),THREE.MathUtils.lerp(.70,.38,state.rain)*(0.45+.55*light));
-        sceneFill.intensity=THREE.MathUtils.lerp(.10,.035,state.cover);
+        const cloudPattern=.58+.42*(.5+.5*Math.sin(cam.x*.00053+cam.z*.00031+now*.12)*Math.sin(cam.z*.00047-now*.08));
+        const cloudBlock=state.rain>.02?THREE.MathUtils.clamp((.42+state.rain*.53)*cloudPattern,0, .94):state.cover*.26*cloudPattern;
+        state.sunVisibility=THREE.MathUtils.clamp(1-cloudBlock,.06,1);
+        applyClimateLighting();
         if(Math.abs(state.wetness-state.lastWetPaint)>.085){state.lastWetPaint=state.wetness;repaintWetSurfaces();}
-        rain.visible=state.rain>.015;rain.material.opacity=state.rain*.54;updateWeatherAmbience(state.rain,state.wind);
+        rain.visible=state.rain>.015;rain.material.opacity=state.rain*.48;updateWeatherAmbience(state.rain,state.wind);
         if(!rain.visible)return;
-        const radius=state.preset==='storm'?120:92;
+        const radius=state.preset==='storm'?115:86;
         for(let i=0;i<count;i++){
             const d=drops[i];if(!Number.isFinite(d.x)||Math.abs(d.x-cam.x)>radius||Math.abs(d.z-cam.z)>radius||d.y<terrainHeightAt(d.x,d.z)){
                 d.x=cam.x+(Math.random()-.5)*radius*2;d.z=cam.z+(Math.random()-.5)*radius*2;d.y=cam.y+16+Math.random()*55;
@@ -1123,6 +1159,22 @@ function makeGroundTexture(){
     }
     return makeCanvasTexture(c);
 }
+// Inline, repeatable terrain albedo: this is deliberately local rather than a network asset,
+// so terrain keeps its base material when the browser is offline or blocks image loading.
+const groundBaseTex=makeGroundTexture();groundBaseTex.repeat.set(16,16);groundBaseTex.anisotropy=Math.min(4,MAX_ANISO);
+function makeSidingTexture(){
+    const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d');
+    x.fillStyle='#d7d1c4';x.fillRect(0,0,128,128);
+    for(let y=0;y<128;y+=12){x.fillStyle='rgba(54,43,34,.20)';x.fillRect(0,y,128,1);x.fillStyle='rgba(255,255,255,.18)';x.fillRect(0,y+2,128,1);}
+    for(let i=0;i<260;i++){const px=Math.random()*128,py=Math.random()*128;x.fillStyle=`rgba(80,65,48,${.025+Math.random()*.06})`;x.fillRect(px,py,2+Math.random()*7,1);}
+    return makeCanvasTexture(c);
+}
+function makeRoofTexture(){
+    const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d');x.fillStyle='#766055';x.fillRect(0,0,128,128);
+    for(let y=0;y<128;y+=10){x.fillStyle='rgba(24,20,19,.36)';x.fillRect(0,y,128,1);for(let q=(y/10)%2?0:9;q<128;q+=18){x.fillStyle='rgba(205,186,166,.12)';x.fillRect(q,y+2,14,1);}}
+    return makeCanvasTexture(c);
+}
+const houseSidingTex=makeSidingTexture(),roofShingleTex=makeRoofTexture();
 
 // ─── IMPROVED CLOUD TEXTURE ───
 function makeCloudTexture(){
@@ -1329,7 +1381,7 @@ function applySavedWorldState(){
 }
 window.addEventListener('pagehide',saveGameState);setInterval(()=>{if(performance.now()-lastAutoSave>18000){lastAutoSave=performance.now();saveGameState();}},5000);
 const scheduledMapStrikes=[];
-const webcam={has:false,placing:false,viewing:false,noService:false,position:new THREE.Vector3(),lookAt:new THREE.Vector3(),returnPosition:new THREE.Vector3(),returnQuaternion:new THREE.Quaternion(),nextFrame:0,shouldRender:true};
+const webcam={has:false,placing:false,viewing:false,noService:false,position:new THREE.Vector3(),lookAt:new THREE.Vector3(),returnPosition:new THREE.Vector3(),returnQuaternion:new THREE.Quaternion(),yaw:0,pitch:-.06,nextFrame:0,shouldRender:true};
 
 const photoMode={active:false,path:0,phase:0,focus:new THREE.Vector3(),savedPosition:new THREE.Vector3(),savedQuaternion:new THREE.Quaternion()};
 const PHOTO_PATHS=['ORBIT','FLYBY','OVERHEAD'];
@@ -1363,10 +1415,12 @@ function toggleWebcamPlacement(){
     document.getElementById('map-webcam').classList.toggle('active',webcam.placing);
     showMessage(webcam.placing?(webcam.has?'Click a map location to move webcam':'Click a map location to place webcam'):'Webcam placement cancelled');drawFullMap();
 }
+function refreshWebcamDirection(){const cp=Math.cos(webcam.pitch),dir=new THREE.Vector3(Math.sin(webcam.yaw)*cp,Math.sin(webcam.pitch),-Math.cos(webcam.yaw)*cp);webcam.lookAt.copy(webcam.position).addScaledVector(dir,90);}
+function turnWebcam(yawDelta,pitchDelta=0){webcam.yaw+=yawDelta;webcam.pitch=THREE.MathUtils.clamp(webcam.pitch+pitchDelta,-.70,.45);refreshWebcamDirection();webcam.nextFrame=0;}
 function placeWebcamFromMap(e){
     const p=mapWorldFromEvent(e),half=CFG.worldSize*.5;
     if(Math.abs(p.x)>half||Math.abs(p.z)>half){showMessage('Outside operational map');return;}
-    webcam.position.set(p.x,terrainHeightAt(p.x,p.z)+42,p.z);webcam.lookAt.set(p.x,terrainHeightAt(p.x,p.z)+8,p.z-95);
+    webcam.position.set(p.x,terrainHeightAt(p.x,p.z)+1.68,p.z);webcam.yaw=0;webcam.pitch=-.055;refreshWebcamDirection();
     webcam.has=true;webcam.noService=false;webcam.placing=false;document.getElementById('map-webcam').classList.remove('active');
     showMessage('REMOTE WEBCAM PLACED · press = to observe');drawFullMap();
 }
@@ -1375,21 +1429,21 @@ function toggleWebcamView(){
     if(!webcam.has){showMessage('Place a webcam on the map with \\');return;}
     if(webcam.noService){showMessage('WEBCAM NO SERVICE · relocate it on the map');return;}
     if(webcam.viewing){
-        webcam.viewing=false;camera.position.copy(webcam.returnPosition);camera.quaternion.copy(webcam.returnQuaternion);renderer.domElement.classList.remove('webcam-pixelate');document.getElementById('webcam-overlay').classList.remove('active');webcamStatus('',false);showMessage('Returned to player camera');return;
+        webcam.viewing=false;camera.position.copy(webcam.returnPosition);camera.quaternion.copy(webcam.returnQuaternion);renderer.domElement.classList.remove('webcam-pixelate');document.getElementById('webcam-overlay').classList.remove('active');resizeRenderer();webcamStatus('',false);showMessage('Returned to player camera');return;
     }
-    webcam.returnPosition.copy(camera.position);camera.getWorldQuaternion(webcam.returnQuaternion);webcam.viewing=true;webcam.nextFrame=0;webcam.shouldRender=true;releaseMovementInput();setScopeLevel(0);
-    if(isMapOpen)toggleMap();controls.lock();renderer.domElement.classList.add('webcam-pixelate');document.getElementById('webcam-overlay').classList.add('active');webcamStatus('REMOTE WEBCAM · 2 FPS<br>SECURE OBSERVER');showMessage('Remote observer linked · = return');
+    webcam.returnPosition.copy(camera.position);camera.getWorldQuaternion(webcam.returnQuaternion);webcam.viewing=true;webcam.nextFrame=0;webcam.shouldRender=true;velocity.set(0,0,0);releaseMovementInput();setScopeLevel(0);
+    if(isMapOpen)toggleMap();controls.lock();renderer.domElement.classList.add('webcam-pixelate');resizeRenderer();document.getElementById('webcam-overlay').classList.add('active');webcamStatus('REMOTE WEBCAM · 2 FPS<br>ARROWS · PAN / TILT');showMessage('Remote observer linked · = return');
 }
 function updateWebcamView(now){
     if(!webcam.viewing)return true;
-    if(webcam.noService){webcam.viewing=false;renderer.domElement.classList.remove('webcam-pixelate');document.getElementById('webcam-overlay').classList.remove('active');webcamStatus('NO SERVICE · SIGNAL LOST',true);return true;}
+    if(webcam.noService){webcam.viewing=false;renderer.domElement.classList.remove('webcam-pixelate');document.getElementById('webcam-overlay').classList.remove('active');resizeRenderer();webcamStatus('NO SERVICE · SIGNAL LOST',true);return true;}
     camera.position.copy(webcam.position);camera.lookAt(webcam.lookAt);
     if(now>=webcam.nextFrame){webcam.nextFrame=now+500;webcam.shouldRender=true;webcamStatus('REMOTE WEBCAM · 2 FPS<br>FRAME '+Math.floor(now/500));return true;}
     webcam.shouldRender=false;return false;
 }
 function disruptWebcam(pos){
     if(!webcam.has||webcam.noService||webcam.position.distanceTo(pos)>250)return;
-    webcam.noService=true;if(webcam.viewing){webcam.viewing=false;camera.position.copy(webcam.returnPosition);camera.quaternion.copy(webcam.returnQuaternion);renderer.domElement.classList.remove('webcam-pixelate');document.getElementById('webcam-overlay').classList.remove('active');}
+    webcam.noService=true;if(webcam.viewing){webcam.viewing=false;camera.position.copy(webcam.returnPosition);camera.quaternion.copy(webcam.returnQuaternion);renderer.domElement.classList.remove('webcam-pixelate');document.getElementById('webcam-overlay').classList.remove('active');resizeRenderer();}
     webcamStatus('NO SERVICE · BLAST INTERFERENCE',true);showMessage('Remote webcam signal lost to blast interference');
 }
 
@@ -2044,8 +2098,8 @@ const downtownMats = downColors.map(c => makeEfficientMaterial({
     color: c, map: downtownFacadeTex, roughnessMap: windowRoughTex,
     roughness: 0.76, metalness: 0.24, envMapIntensity: 1.12,
 }));
-const suburbWallMats = suburbWallColors.map(c => makeEfficientMaterial({ color: c, roughness: .90, metalness: .02, envMapIntensity: .55 }));
-const suburbRoofMats = suburbRoofColors.map(c => makeEfficientMaterial({ color: c, roughness: .88, metalness: .04, envMapIntensity: .6 }));
+const suburbWallMats = suburbWallColors.map(c => makeEfficientMaterial({ color: c, map:houseSidingTex, roughness: .90, metalness: .02, envMapIntensity: .55 }));
+const suburbRoofMats = suburbRoofColors.map(c => makeEfficientMaterial({ color: c, map:roofShingleTex, roughness: .88, metalness: .04, envMapIntensity: .6 }));
 const barnMats = barnColors.map(c => makeEfficientMaterial({ color: c, roughness: .94, metalness: .02, envMapIntensity: .4 }));
 const signMats = signColors.map(c => makeEfficientMaterial({ color: c, roughness: .4, metalness: .1, emissive: c, emissiveIntensity: .28, envMapIntensity: .9 }));
 
@@ -2053,8 +2107,8 @@ const signMats = signColors.map(c => makeEfficientMaterial({ color: c, roughness
 /* CITY STRIKE r160 — bounded, spatially chunked instanced-building replacement.
    Install once at the original createDowntownBuilding declaration (see manifest). */
 
-const BUILDING_LIMIT = VERY_LOW_MEM ? 2600 : DECENT_GPU ? 11000 : 7200;
-const BUILDING_TOWN_RESERVE = VERY_LOW_MEM ? 200 : DECENT_GPU ? 1800 : 1100;
+const BUILDING_LIMIT = VERY_LOW_MEM ? 2600 : DECENT_GPU ? 20000 : 16000;
+const BUILDING_TOWN_RESERVE = VERY_LOW_MEM ? 200 : DECENT_GPU ? 1900 : 1400;
 const CITY_BUILDING_LIMIT = Math.floor((BUILDING_LIMIT - BUILDING_TOWN_RESERVE) / CITY_CENTERS.length);
 const BUILDING_CHUNK_SIZE = 3072;
 const BUILDING_WINDOW_CAP = VERY_LOW_MEM ? 420 : LOW_MEM ? 650 : 880;
@@ -2101,8 +2155,8 @@ const buildingMats = {
     concrete:makeEfficientMaterial({color:0x73808a,roughness:.88,metalness:.04,envMapIntensity:.45}),
     glass:makeEfficientMaterial({color:0x263e52,roughness:.42,metalness:.18,envMapIntensity:.35}),
     apartment:makeEfficientMaterial({color:0x96958e,roughness:.89,metalness:.02,envMapIntensity:.42}),
-    house:makeEfficientMaterial({color:0xd0bea0,roughness:.93,metalness:.01,envMapIntensity:.35}),
-    roof:makeEfficientMaterial({color:0x503d35,roughness:.91,metalness:.02,envMapIntensity:.35}),
+    house:makeEfficientMaterial({color:0xd0bea0,map:houseSidingTex,roughness:.93,metalness:.01,envMapIntensity:.35}),
+    roof:makeEfficientMaterial({color:0x503d35,map:roofShingleTex,roughness:.91,metalness:.02,envMapIntensity:.35}),
     trim:makeEfficientMaterial({color:0x262d32,roughness:.73,metalness:.16,envMapIntensity:.52}),
     shop:makeEfficientMaterial({color:0x607984,roughness:.79,metalness:.06,envMapIntensity:.5}),
     gas:makeEfficientMaterial({color:0xe0ae45,roughness:.53,metalness:.18,emissive:0x50320a,emissiveIntensity:.12}),
@@ -2119,9 +2173,10 @@ const buildingMats = {
 /* Small procedural shader additions: no canvas, image, or world-sized texture allocation. */
 function _buildingShader(mat, cement, facadeWindows){
     mat.onBeforeCompile = shader => {
+        shader.uniforms.cityNight=worldNature.night;
         shader.vertexShader = 'varying vec3 vCSWorldPos; varying vec3 vCSLocalPos;\n' + shader.vertexShader;
         shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vCSLocalPos=position;\n vec4 csWP=vec4(transformed,1.0);\n #ifdef USE_INSTANCING\n csWP=instanceMatrix*csWP;\n #endif\n vCSWorldPos=(modelMatrix*csWP).xyz;');
-        shader.fragmentShader = 'varying vec3 vCSWorldPos; varying vec3 vCSLocalPos;\nfloat csHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}\n' + shader.fragmentShader;
+        shader.fragmentShader = 'uniform float cityNight;\nvarying vec3 vCSWorldPos; varying vec3 vCSLocalPos;\nfloat csHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}\n' + shader.fragmentShader;
         let patch = '';
         if(cement) patch += `
             float csGrain=csHash(floor(vCSWorldPos.xz*2.7)+floor(vCSWorldPos.y*3.1));
@@ -2136,11 +2191,12 @@ function _buildingShader(mat, cement, facadeWindows){
             float csAlong=mix(vCSWorldPos.x,vCSWorldPos.z,step(.487,abs(vCSLocalPos.x)));
             float csCols=abs(fract(csAlong/6.0)-.5);
             float csPane=csSide*(1.0-smoothstep(.20,.27,csVert))*(1.0-smoothstep(.22,.28,csCols));
-            float csWarm=step(.94,csHash(floor(vCSWorldPos.xz/6.)+floor(vCSWorldPos.y/5.)));
-            vec3 csWin=mix(vec3(.025,.10,.17),vec3(.95,.49,.16),csWarm);
-            diffuseColor.rgb=mix(diffuseColor.rgb,csWin,csPane*.72);
+            float csWarm=step(.63,csHash(floor(vCSWorldPos.xz/6.)+floor(vCSWorldPos.y/5.)));
+            vec3 csWin=mix(vec3(.025,.10,.17),vec3(1.0,.45,.09),csWarm);
+            diffuseColor.rgb=mix(diffuseColor.rgb,csWin,csPane*(.18+cityNight*.82));
         `;
         shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n' + patch);
+        if(facadeWindows)shader.fragmentShader=shader.fragmentShader.replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\n totalEmissiveRadiance+=mix(vec3(.01,.035,.07),vec3(1.0,.28,.045),csWarm)*csPane*cityNight*2.1;');
     };
     mat.customProgramCacheKey = () => 'city-strike-building-' + cement + '-' + facadeWindows;
     mat.needsUpdate = true;
@@ -2148,19 +2204,20 @@ function _buildingShader(mat, cement, facadeWindows){
 _buildingShader(buildingMats.concrete,true,true);
 _buildingShader(buildingMats.apartment,true,true);
 _buildingShader(buildingMats.shop,true,false);
-_buildingShader(buildingMats.house,true,false);
+_buildingShader(buildingMats.house,true,true);
 _buildingShader(buildingMats.glass,false,true);
 _buildingShader(buildingMats.window,false,false);
 // Warm panes are deterministic from their world positions, while remaining opaque.
 buildingMats.window.onBeforeCompile = shader => {
+    shader.uniforms.cityNight=worldNature.night;
     shader.vertexShader='varying vec3 vCSWindowWorld;\n'+shader.vertexShader;
     shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n vec4 csWW=vec4(transformed,1.0);\n #ifdef USE_INSTANCING\n csWW=instanceMatrix*csWW;\n #endif\n vCSWindowWorld=(modelMatrix*csWW).xyz;');
-    shader.fragmentShader='varying vec3 vCSWindowWorld;\nfloat csWH(vec2 p){return fract(sin(dot(p,vec2(91.7,217.3)))*12415.73);}\n'+shader.fragmentShader;
+    shader.fragmentShader='uniform float cityNight;\nvarying vec3 vCSWindowWorld;\nfloat csWH(vec2 p){return fract(sin(dot(p,vec2(91.7,217.3)))*12415.73);}\n'+shader.fragmentShader;
     shader.fragmentShader=shader.fragmentShader.replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
         float csWarm=step(.76,csWH(floor(vCSWindowWorld.xz/5.0)+floor(vCSWindowWorld.y/5.0)));
-        totalEmissiveRadiance+=mix(vec3(.015,.05,.09),vec3(.9,.28,.055),csWarm)*.58;`);
+        totalEmissiveRadiance+=mix(vec3(.006,.018,.035),vec3(1.0,.30,.055),csWarm)*(.10+cityNight*2.5);`);
 };
-buildingMats.window.customProgramCacheKey=()=> 'city-strike-opaque-window-v2'; buildingMats.window.needsUpdate=true;
+buildingMats.window.customProgramCacheKey=()=> 'city-strike-opaque-window-v3'; buildingMats.window.needsUpdate=true;
 
 function _buildingMat(kind){ return buildingMats[kind] || buildingMats.concrete; }
 function _partKey(kind, mat, geo){ return kind+'|'+mat.uuid+'|'+geo.uuid; }
@@ -2234,7 +2291,7 @@ function createSuburbRow(cx,cz,q){
     const roadX=city.x-r+Math.round((cx-(city.x-r))/CFG.blockSize)*CFG.blockSize;
     const roadZ=city.z-r+Math.round((cz-(city.z-r))/CFG.blockSize)*CFG.blockSize;
     const alongX=Math.abs(cz-roadZ)<Math.abs(cx-roadX);
-    const n=2+((q*100)%3|0); // 2-4 homes
+    const n=2; // paired homes let nearly every outer block receive a residential frontage
     const setback=26+Math.random()*8, spacing=25;
     if(alongX){const side=Math.sign(cz-roadZ)||1,fz=roadZ+side*setback;
         for(let i=0;i<n;i++){const hx=cx+(i-(n-1)/2)*spacing;createSuburbHouse(hx,fz+(Math.random()-.5)*6,false);}}
@@ -2250,7 +2307,8 @@ function createSuburbHouse(x,z,isSmallTown=false){
     const toRoad=Math.abs(fx)?Math.abs(roadX-x):Math.abs(roadZ-z),driveLen=Math.max(3,toRoad-d*.5+CFG.roadWidth*.5),driveW=3.5;
     _surface(x+fx*(d*.5+driveLen*.5),z+fz*(d*.5+driveLen*.5),driveW,driveLen,'concrete',rot);
     // Place the shed wholly beyond the rear wall, leaving a larger usable backyard.
-    _queuePart(rec,'accessory',x-fx*(d*.5+4.2),rec.groundY+1.1,z-fz*(d*.5+4.2),2.6,2.2,3.0,rot,'roof');_houseFence(rec,rot,driveW);return rec;
+    _queuePart(rec,'accessory',x-fx*(d*.5+4.2),rec.groundY+1.1,z-fz*(d*.5+4.2),2.6,2.2,3.0,rot,'roof');_houseFence(rec,rot,driveW);
+    const side=Math.random()<.5?-1:1,tx=x+Math.cos(rot)*side*(w*.5+5.5)-fx*2,tz=z-Math.sin(rot)*side*(w*.5+5.5)-fz*2;if(!pointIsBlocked(tx,tz,3.6)&&roadClearAt(tx,tz,4.5))createStreetTree(tx,tz,.72+Math.random()*.38);return rec;
 }
 function createCommercialBuilding(x,z,type='store'){
     const defs={apartment:[44+Math.random()*12,38+Math.random()*12,64+Math.random()*42,'apartment'],hotel:[54+Math.random()*16,42+Math.random()*16,74+Math.random()*48,'apartment'],store:[36+Math.random()*16,31+Math.random()*14,10+Math.random()*6,'shop'],gas:[30+Math.random()*8,24+Math.random()*7,7+Math.random()*3,'shop']};
@@ -2263,7 +2321,9 @@ function createCommercialBuilding(x,z,type='store'){
 }
 function createLocalCity(city){
     CITY_RECORDS.push({id:city.id,name:city.name,x:city.x,z:city.z,radius:CFG.cityRadius});const previous=buildingRender.activeCityId;buildingRender.activeCityId=city.id;
-    const bs=CFG.blockSize,r=CFG.roadZoneRadius;const lots=[];for(let lx=-r;lx<r;lx+=bs)for(let lz=-r;lz<r;lz+=bs)lots.push({lx,lz,key:hash2(Math.round(lx),Math.round(lz))});lots.sort((a,b)=>a.key-b.key);for(const {lx,lz} of lots){const cx=city.x+lx+bs*.5,cz=city.z+lz+bs*.5,dist=Math.hypot(lx+bs*.5,lz+bs*.5);if(dist>CFG.cityRadius-bs*.22)continue;const hash=((Math.imul((lx/bs)|0,73856093)^Math.imul((lz/bs)|0,19349663)^Math.imul(city.x|0,83492791))>>>0)%100;if(hash>43)continue;const q=(hash%37)/37;if(dist<CFG.downtownRadius){if(q<.16)createCommercialBuilding(cx,cz,'hotel');else if(q<.43)createCommercialBuilding(cx,cz,'apartment');else if(q<.55)createCommercialBuilding(cx,cz,'store');else createDowntownBuilding(cx,cz);}else if(dist<CFG.innerUrbanRadius){if(q<.22)createCommercialBuilding(cx,cz,'apartment');else if(q<.38)createCommercialBuilding(cx,cz,'store');else if(q<.45)createCommercialBuilding(cx,cz,'gas');else createMediumRise(cx,cz);}else if(dist<CFG.mixedUrbanRadius){if(q<.15)createCommercialBuilding(cx,cz,'store');else if(q<.21)createCommercialBuilding(cx,cz,'gas');else if(q<.70){createSuburbHouse(cx-bs*.19,cz-bs*.17);if(q>.38)createSuburbHouse(cx+bs*.19,cz+bs*.17);}else createMediumRise(cx,cz);}else if(q<.07)createCommercialBuilding(cx,cz,q<.03?'gas':'store');else createSuburbRow(cx,cz,q);}
+    const bs=CFG.blockSize,r=CFG.roadZoneRadius,lots=[];for(let lx=-r;lx<r;lx+=bs)for(let lz=-r;lz<r;lz+=bs){const dist=Math.hypot(lx+bs*.5,lz+bs*.5);lots.push({lx,lz,dist,key:hash2(Math.round(lx),Math.round(lz))});}
+    // Build the residential edge first so the suburban grid is never starved by central towers.
+    lots.sort((a,b)=>b.dist-a.dist||a.key-b.key);for(const {lx,lz,dist} of lots){const cx=city.x+lx+bs*.5,cz=city.z+lz+bs*.5;if(dist>CFG.cityRadius-bs*.22)continue;const hash=((Math.imul((lx/bs)|0,73856093)^Math.imul((lz/bs)|0,19349663)^Math.imul(city.x|0,83492791))>>>0)%100;const keep=dist>CFG.mixedUrbanRadius?93:43;if(hash>keep)continue;const q=(hash%37)/37;if(dist<CFG.downtownRadius){if(q<.16)createCommercialBuilding(cx,cz,'hotel');else if(q<.43)createCommercialBuilding(cx,cz,'apartment');else if(q<.55)createCommercialBuilding(cx,cz,'store');else createDowntownBuilding(cx,cz);}else if(dist<CFG.innerUrbanRadius){if(q<.22)createCommercialBuilding(cx,cz,'apartment');else if(q<.38)createCommercialBuilding(cx,cz,'store');else if(q<.45)createCommercialBuilding(cx,cz,'gas');else createMediumRise(cx,cz);}else if(dist<CFG.mixedUrbanRadius){if(q<.15)createCommercialBuilding(cx,cz,'store');else if(q<.21)createCommercialBuilding(cx,cz,'gas');else if(q<.70){createSuburbHouse(cx-bs*.19,cz-bs*.17);if(q>.38)createSuburbHouse(cx+bs*.19,cz+bs*.17);}else createMediumRise(cx,cz);}else if(q<.07)createCommercialBuilding(cx,cz,q<.03?'gas':'store');else createSuburbRow(cx,cz,q);}
     buildingRender.activeCityId=previous;
 }
 function createTown(cx,cz,index,kind='small'){
@@ -2287,9 +2347,9 @@ function createTown(cx,cz,index,kind='small'){
 function seedUrbanTrees(){
     // Trees line both sides of every street: walk the road grid and place
     // rows at regular intervals with a small setback from the carriageway.
-    const treeSpacing = VERY_LOW_MEM?180:DECENT_GPU?72:120, parkCount = VERY_LOW_MEM?3:DECENT_GPU?10:6;
+    const treeSpacing=VERY_LOW_MEM?300:DECENT_GPU?105:220,parkCount=VERY_LOW_MEM?3:DECENT_GPU?10:6;
     for(const city of CITY_CENTERS){
-        const bs=CFG.blockSize,r=CFG.roadZoneRadius,off=CFG.roadWidth*.5+5;
+        const bs=CFG.blockSize,r=CFG.roadZoneRadius,off=CFG.roadWidth*.5+10;
         for(let k=-r;k<=r;k+=bs){const extent=Math.sqrt(Math.max(0,CFG.cityRadius**2-k*k));
             for(let s=-extent;s<extent;s+=treeSpacing){const j=Math.round((s+extent)/treeSpacing);
                 const side=(j%2?1:-1);
@@ -2298,23 +2358,23 @@ function seedUrbanTrees(){
                 for(const [tx,tz] of [[ax,az],[bx,bz]]){
                     const d=Math.hypot(tx-city.x,tz-city.z);
                     if(d<CFG.downtownRadius*.7||d>CFG.cityRadius-120)continue;
-                    if(!pointIsBlocked(tx,tz,2.4)&&roadClearAt(tx,tz,2.4))createStreetTree(tx,tz,.82+Math.random()*.5);
+                    if(!pointIsBlocked(tx,tz,3.5)&&roadClearAt(tx,tz,4.5))createStreetTree(tx,tz,.82+Math.random()*.5);
                 }}
         }
         // Small parks: dense clumps inside the mixed-use ring.
         for(let p=0;p<parkCount;p++){const a=hash2(p*7+3,(city.x|0)+1)*6.283,rr=CFG.innerUrbanRadius+hash2(p*13+1,(city.z|0)+1)*(CFG.suburbRadius-CFG.innerUrbanRadius);
             const px=city.x+Math.cos(a)*rr,pz=city.z+Math.sin(a)*rr;
-            for(let t=0;t<14;t++){const tx=px+(Math.random()-.5)*90,tz=pz+(Math.random()-.5)*90;if(!pointIsBlocked(tx,tz,2.4)&&roadClearAt(tx,tz,2.4))createStreetTree(tx,tz,.8+Math.random()*.7);}}
+            for(let t=0;t<14;t++){const tx=px+(Math.random()-.5)*90,tz=pz+(Math.random()-.5)*90;if(!pointIsBlocked(tx,tz,3.5)&&roadClearAt(tx,tz,4.5))createStreetTree(tx,tz,.8+Math.random()*.7);}}
     }
 }
 // ─── STREETLIGHT POLES (knock over in blasts) ───
-const STREETLIGHT_CAP = VERY_LOW_MEM?2400:DECENT_GPU?74000:15000;
+const STREETLIGHT_CAP=VERY_LOW_MEM?3200:DECENT_GPU?36000:24000;
 const streetPoles=[]; let streetlightMesh=null, streetlightFallenMesh=null;
 let streetlightFinalized=false;
 function createStreetLights(){
     if(streetlightFinalized)return; streetlightFinalized=true;
     const poleMat=makeEfficientMaterial({color:0x3c4248,roughness:.6,metalness:.55,envMapIntensity:.9});
-    const lampMat=makeEfficientMaterial({color:0xfff2c8,emissive:0xffdf90,emissiveIntensity:1.15,roughness:.4});
+    const lampMat=makeEfficientMaterial({color:0xfff2c8,emissive:0xffdf90,emissiveIntensity:.08,roughness:.4});cityLightMaterials.push({material:lampMat,day:.08,night:5.2});
     const pole=new THREE.CylinderGeometry(.085,.12,7.4,6).translate(0,3.7,0).toNonIndexed();
     const arm=new THREE.BoxGeometry(1.5,.09,.09).translate(.72,7.45,0).toNonIndexed();
     const head=new THREE.BoxGeometry(.5,.16,.3).translate(1.45,7.35,0).toNonIndexed();
@@ -2326,19 +2386,21 @@ function createStreetLights(){
     for(let i=0;i<STREETLIGHT_CAP;i++){streetlightMesh.setMatrixAt(i,forestHiddenMatrix);streetlightFallenMesh.setMatrixAt(i,forestHiddenMatrix);}
     scene.add(streetlightMesh);scene.add(streetlightFallenMesh);
     const _d=new THREE.Object3D();
-    function addPole(x,z,rotY){
-        if(streetPoles.length>=STREETLIGHT_CAP)return;
+    function addPole(x,z,rotY,limit=STREETLIGHT_CAP){
+        if(streetPoles.length>=STREETLIGHT_CAP||streetPoles.length>=limit)return;
         const y=terrainHeightAt(x,z);
         _d.position.set(x,y,z);_d.rotation.set(0,rotY,0);_d.scale.setScalar(1);_d.updateMatrix();
         const idx=streetPoles.length;streetlightMesh.setMatrixAt(idx,_d.matrix);
         streetPoles.push({x,y,z,rotY,idx,fallen:false});
     }
-    // Major streets get poles every 130 m alternating sides; towns line their cross.
-    for(const city of CITY_CENTERS){const bs=CFG.blockSize,r=CFG.roadZoneRadius;
+    // Every other block gets a pole; this covers every suburban district without tens of thousands of redundant instances.
+    const poleSpacing=VERY_LOW_MEM?520:DECENT_GPU?220:330;
+    const cityLampBudget=Math.floor((STREETLIGHT_CAP-1200)/CITY_CENTERS.length);
+    for(let cityIndex=0;cityIndex<CITY_CENTERS.length;cityIndex++){const city=CITY_CENTERS[cityIndex],cityLimit=(cityIndex+1)*cityLampBudget,bs=CFG.blockSize,r=CFG.roadZoneRadius;
         for(let k=-r;k<=r;k+=bs){const extent=Math.sqrt(Math.max(0,CFG.cityRadius**2-k*k));
-            for(let s=-extent+90;s<extent;s+=130){const j=Math.round((s+extent)/130),side=(j%2?1:-1),off=CFG.roadWidth*.5+3.5;
-                addPole(city.x+s,city.z+k+side*off,side>0?-Math.PI/2:Math.PI/2);
-                addPole(city.x+k+side*off,city.z+s,side>0?0:Math.PI);}}
+            for(let s=-extent+Math.min(110,poleSpacing*.5);s<extent;s+=poleSpacing){const j=Math.round((s+extent)/poleSpacing),side=(j%2?1:-1),off=CFG.roadWidth*.5+8;
+                addPole(city.x+s,city.z+k+side*off,side>0?-Math.PI/2:Math.PI/2,cityLimit);
+                addPole(city.x+k+side*off,city.z+s,side>0?0:Math.PI,cityLimit);}}
     }
     for(const t of TOWN_CENTERS){const ext=(t.radius||CFG.townRadius)*.5;
         for(let s=-ext;s<=ext;s+=120){addPole(t.x+s,t.z+42,0);addPole(t.x+42,t.z+s,-Math.PI/2);}
@@ -2958,8 +3020,8 @@ function treeSpeciesFor(x,z,urban=false){
 function makeForestTree(x,z,scale=1,urban=false){
     const proxy=new THREE.Group();
     proxy.position.set(x,terrainHeightAt(x,z),z);
-    const species=treeSpeciesFor(x,z,urban);
-    proxy.userData={tree:true,dead:false,stump:false,health:1,baseScale:scale,instanceId:forestTrees.length,urban:!!urban,species,
+    const species=treeSpeciesFor(x,z,urban),clearOfRoad=roadClearAt(x,z,urban?4.5:8);
+    proxy.userData={tree:true,dead:!clearOfRoad,stump:false,health:1,baseScale:scale,instanceId:forestTrees.length,urban:!!urban,species,
         scaleJitter:.82+hash2(Math.floor(x),Math.floor(z)+999)*.36};
     forestTrees.push(proxy); return proxy;
 }
@@ -2972,13 +3034,14 @@ function finalizeTreeInstances(){
     }
     const q=new THREE.Quaternion(),sc=new THREE.Vector3(),color=new THREE.Color();
     for(const chunk of forestChunks.values()){
-        chunk.near=[];chunk.far=[];chunk.counters=new Array(TREE_SPECIES_COUNT).fill(0);
+        chunk.near=[];chunk.far=[];chunk.counters=new Array(TREE_SPECIES_COUNT).fill(0);chunk.speciesCounts=new Array(TREE_SPECIES_COUNT).fill(0);for(const t of chunk.trees)chunk.speciesCounts[t.userData.species]++;
         for(let sp=0;sp<TREE_SPECIES_COUNT;sp++){
-            const nm=new THREE.InstancedMesh(TREE_GEOS[sp],[TREE_SPECIES_MATS[sp].trunk,TREE_SPECIES_MATS[sp].leaf],chunk.trees.length);
-            const fm=new THREE.InstancedMesh(TREE_FAR_GEOS[sp],[TREE_SPECIES_MATS[sp].trunk,TREE_SPECIES_MATS[sp].leaf],chunk.trees.length);
+            const count=Math.max(1,chunk.speciesCounts[sp]);
+            const nm=new THREE.InstancedMesh(TREE_GEOS[sp],[TREE_SPECIES_MATS[sp].trunk,TREE_SPECIES_MATS[sp].leaf],count);
+            const fm=new THREE.InstancedMesh(TREE_FAR_GEOS[sp],[TREE_SPECIES_MATS[sp].trunk,TREE_SPECIES_MATS[sp].leaf],count);
             nm.instanceMatrix.setUsage(THREE.DynamicDrawUsage);fm.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
             nm.visible=false;fm.visible=false;treeInstances.add(nm);treeInstances.add(fm);chunk.near.push(nm);chunk.far.push(fm);
-            for(let i=0;i<chunk.trees.length;i++){nm.setMatrixAt(i,forestHiddenMatrix);fm.setMatrixAt(i,forestHiddenMatrix);}
+            for(let i=0;i<count;i++){nm.setMatrixAt(i,forestHiddenMatrix);fm.setMatrixAt(i,forestHiddenMatrix);}
         }
         for(const t of chunk.trees){const u=t.userData,s=u.baseScale,v=hash2(Math.floor(t.position.x),Math.floor(t.position.z));
             q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP,v*Math.PI*2);sc.setScalar(s);
@@ -5868,7 +5931,8 @@ document.addEventListener('keydown', (e)=>{
     if((isMapOpen || isShopOpen || isSettingsOpen) && e.code !== 'Tab' && e.code !== 'KeyM') return;
     if(e.code === 'Tab'){ e.preventDefault(); openShop(); return; }
     if(e.code === 'KeyM'){ toggleMap(); return; }
-    if(webcam.viewing||photoMode.active) return;
+    if(webcam.viewing){const turn={ArrowLeft:[-.12,0],ArrowRight:[.12,0],ArrowUp:[0,.075],ArrowDown:[0,-.075]}[e.code];if(turn){e.preventDefault();turnWebcam(turn[0],turn[1]);}return;}
+    if(photoMode.active)return;
     if(isDead || !controls.isLocked) return;
     if(missileView && e.code!=='Semicolon') return;
     if(e.code === 'KeyP'){ deployParachute(); return; }
@@ -6007,26 +6071,16 @@ function updateSunVisibility(){ if(sunDiscEl) sunDiscEl.style.display='none'; }
 
 
 function applyTimeOfDay(hour){
-    timeOfDay = ((hour % 24) + 24) % 24;
-    const phase = (timeOfDay / 24) * Math.PI * 2;
-    const elev = Math.sin(phase - Math.PI/2);
-    const az = phase - Math.PI/2;
-    const sunStrength = THREE.MathUtils.clamp(elev * 2.0 + 0.18, 0.025, 2.5);
-    sun.position.set(Math.cos(az) * 420, Math.max(8, elev * 620 + 80), Math.sin(az) * 420);
+    timeOfDay=((hour%24)+24)%24;
+    const phase=(timeOfDay/24)*Math.PI*2,elev=Math.sin(phase-Math.PI/2),az=phase-Math.PI/2;
+    // Keep the solar vector physically below the horizon at night; it is never clamped upward.
+    sun.position.set(Math.cos(az)*720,elev*900,Math.sin(az)*720);
     skyUniforms.sunPosition.value.copy(sun.position).normalize();
-    atmosphereSky.material.uniforms.turbidity.value = THREE.MathUtils.lerp(9.5, 2.2, Math.max(0,elev));
-    atmosphereSky.material.uniforms.rayleigh.value = THREE.MathUtils.lerp(0.8, 2.8, Math.max(0,elev));
-    sun.intensity = sunStrength;
-    fillLight.intensity = THREE.MathUtils.lerp(0.10, 0.42, THREE.MathUtils.clamp(elev * 0.5 + 0.5, 0, 1));
-    bounceLight.intensity = THREE.MathUtils.lerp(0.04, 0.22, THREE.MathUtils.clamp(elev * 0.5 + 0.5, 0, 1));
-    const night = THREE.MathUtils.clamp((-elev + 0.18) / 1.18, 0, 1);
-    scene.background.setHSL(0.56, 0.34, THREE.MathUtils.lerp(0.06, 0.64, 1-night));
-    skyMesh.material.color.setHSL(0.57, 0.45, THREE.MathUtils.lerp(0.16, 1.0, 1-night));
-    scene.fog.color.setHSL(0.56, 0.28, THREE.MathUtils.lerp(0.09, 0.72, 1-night));
-    renderer.toneMappingExposure = THREE.MathUtils.lerp(0.72, 1.12, 1-night);
-    sunDisc3D.visible=elev>-0.08;starMaterial.opacity=night*.92;moonDisc3D.material.opacity=night*.92;
-    if(timeSlider) timeSlider.value = String(timeOfDay);
-    if(timeValEl) timeValEl.textContent = formatClock(timeOfDay);
+    atmosphereSky.material.uniforms.turbidity.value=THREE.MathUtils.lerp(10.8,2.2,Math.max(0,elev));
+    atmosphereSky.material.uniforms.rayleigh.value=THREE.MathUtils.lerp(.35,2.8,Math.max(0,elev));
+    applyClimateLighting();
+    if(timeSlider)timeSlider.value=String(timeOfDay);
+    if(timeValEl)timeValEl.textContent=formatClock(timeOfDay);
 }
 timeSlider.addEventListener('input', ()=>{
     applyTimeOfDay(parseFloat(timeSlider.value));
@@ -6273,8 +6327,8 @@ function animate(){
     const todPhase = (timeOfDay / 24) * Math.PI * 2;
     const todElev = Math.sin(todPhase - Math.PI/2);
     const todAz = todPhase - Math.PI/2;
-    const sunDir=new THREE.Vector3(Math.cos(todAz),Math.max(-.05,todElev),Math.sin(todAz)).normalize();
-    if(frameCount%3===0){sun.position.copy(_skyVec).addScaledVector(sunDir,1400);sun.target.position.copy(_skyVec);sunDisc3D.position.copy(_skyVec).addScaledVector(sunDir,SUN_DISTANCE);moonDisc3D.position.copy(_skyVec).addScaledVector(sunDir,-SUN_DISTANCE);sunDisc3D.visible=todElev>-0.08;sun.target.updateMatrixWorld();}starField.position.copy(_skyVec);
+    const sunDir=new THREE.Vector3(Math.cos(todAz),todElev,Math.sin(todAz)).normalize();
+    if(frameCount%3===0){sun.position.copy(_skyVec).addScaledVector(sunDir,1400);sun.target.position.copy(_skyVec);sunDisc3D.position.copy(_skyVec).addScaledVector(sunDir,SUN_DISTANCE);moonDisc3D.position.copy(_skyVec).addScaledVector(sunDir,-SUN_DISTANCE);const ws=weather.state;sunDisc3D.visible=todElev>.02&&ws.sunVisibility>.30&&ws.rain<.24;sun.target.updateMatrixWorld();}starField.position.copy(_skyVec);
     if(frameCount % 8 === 0) updateSunVisibility();
 
     recoilOffset *= 0.82; recoilRot *= 0.82;
@@ -6491,7 +6545,7 @@ function animate(){
         }
         if(thirdPerson){ if(playerAvatar) playerAvatar.visible=false; tpHeadSaved=false; }
     }
-    else if(mode === 'walking' && !isDead){
+    else if(mode === 'walking' && !isDead && !webcam.viewing){
         thirdPersonRestoreHead();
         velocity.x -= velocity.x * 6.5 * dt;
         velocity.z -= velocity.z * 6.5 * dt;
@@ -6860,7 +6914,7 @@ function animate(){
         }
     }
 
-    if(mode === 'walking' && !parachuteActive && !isDead){
+    if(mode === 'walking' && !parachuteActive && !isDead && !webcam.viewing){
         const minCameraY = terrainHeightAt(camera.position.x, camera.position.z) + 1.58;
         if(camera.position.y < minCameraY){
             camera.position.y = minCameraY;
@@ -6917,7 +6971,7 @@ function applyGraphicsMode(mode){
     resizeRenderer();
     if(realismFX)realismFX.setFogFar(rd);
 }
-function resizeRenderer(){camera.aspect=innerWidth/innerHeight;camera.near=.12;camera.far=Math.max(CFG.renderDistance+800,20500);camera.updateProjectionMatrix();renderer.setPixelRatio(budgetPixelRatio());renderer.setSize(innerWidth,innerHeight);if(composer)composer.setSize(innerWidth,innerHeight);}
+function resizeRenderer(){camera.aspect=innerWidth/innerHeight;camera.near=.12;camera.far=Math.max(CFG.renderDistance+800,20500);camera.updateProjectionMatrix();const pixelRatio=webcam.viewing?Math.min(.36,budgetPixelRatio()):budgetPixelRatio();renderer.setPixelRatio(pixelRatio);renderer.setSize(innerWidth,innerHeight);if(composer)composer.setSize(innerWidth,innerHeight);}
 function updatePerformanceBudget(rawMs){
     if(!Number.isFinite(rawMs)||rawMs<=0||rawMs>1000)return;
     const p=performanceBudget;p.times[p.cursor++%120]=rawMs;p.samples=Math.min(120,p.samples+1);p.elapsed+=rawMs;p.frames++;
@@ -6933,13 +6987,14 @@ function updatePerformanceBudget(rawMs){
     p.elapsed=0;p.frames=0;
 }
 function runBrowserVisualRegression(){
-    const result={shaderCompile:false,terrain:false,clouds:false,map:false,explosion:false,errors:[]};
+    const result={shaderCompile:false,terrain:false,textures:false,clouds:false,map:false,explosion:false,errors:[]};
     try{renderer.compile(scene,camera);result.shaderCompile=true;}catch(e){result.errors.push('shader: '+e.message);}
     result.terrain=worldNature.active.size>0&&worldNature.tiles.every(t=>!t.mesh.material.transparent&&t.mesh.material.depthWrite);
+    result.textures=!!(groundBaseTex&&houseSidingTex&&roofShingleTex&&buildingMats.house.map===houseSidingTex&&buildingMats.roof.map===roofShingleTex)&&[...worldNature.active.values()].every(t=>t.mesh.material.map===groundBaseTex&&t.mesh.geometry.getAttribute('uv')&&t.surfaceTexture);
     result.clouds=!!(worldNature.cloudMaterial&&worldNature.clouds[0]&&worldNature.clouds[0].visible&&worldNature.cirrusMesh?.visible);
     result.map=TOPO_RANGE===CFG.worldSize*.5&&fullWorldMapZoom()>0;
     try{const before=realismFX?realismFX.stats().smoke:0,p=camera.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0,0,-180));createExplosion(p,'rocket');updatePooledEffects(.1);if(realismFX)realismFX.update(.1);result.explosion=(realismFX?realismFX.stats().smoke:0)>before;}catch(e){result.errors.push('explosion: '+e.message);}
-    result.pass=result.shaderCompile&&result.terrain&&result.clouds&&result.map&&result.explosion&&!result.errors.length;return result;
+    result.pass=result.shaderCompile&&result.terrain&&result.textures&&result.clouds&&result.map&&result.explosion&&!result.errors.length;return result;
 }
 
 function gameDiagnostics(){return {
